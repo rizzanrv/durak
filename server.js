@@ -23,6 +23,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'durak-secret-key';
 const rooms = new Map();
 const userRooms = new Map();
 const onlineUsers = new Map();
+const turnTimers = new Map();
 
 app.use(cors());
 app.use(express.json());
@@ -80,10 +81,10 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('create_room', ({ mode }) => {
+  socket.on('create_room', ({ mode, settings }) => {
     if (!currentUser) return;
     const roomId = 'r_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
-    const room = new GameRoom(roomId, mode || 'classic', currentUser.id);
+    const room = new GameRoom(roomId, mode || 'classic', currentUser.id, settings || {});
     room.addPlayer(currentUser.id, currentUser.username);
     rooms.set(roomId, room);
     userRooms.set(currentUser.id, roomId);
@@ -115,17 +116,25 @@ io.on('connection', (socket) => {
     if (room.allReady()) startGame(room, getRoomId(socket));
   });
 
-  socket.on('add_ai', () => {
+  socket.on('add_ai', (data) => {
     if (!currentUser) return;
     const room = getRoom(socket);
     if (!room) return;
     if (room.players.length >= room.maxPlayers) return;
+    
+    const difficulty = data?.difficulty || room.settings?.aiDifficulty || 'medium';
     const aiId = 'ai_' + Date.now();
-    room.addPlayer(aiId, 'Bot');
+    const aiName = difficulty === 'easy' ? 'Easy Bot' : difficulty === 'hard' ? 'Hard Bot' : 'Bot';
+    
+    room.addPlayer(aiId, aiName);
     room.setReady(aiId);
+    
+    // Сохраняем сложность для ИИ
+    if (!room.aiDifficulties) room.aiDifficulties = {};
+    room.aiDifficulties[aiId] = difficulty;
+    
     io.to(getRoomId(socket)).emit('room_updated', room.getPublicState());
     io.emit('rooms_updated', getPublicRooms());
-    if (room.allReady()) startGame(room, getRoomId(socket));
   });
 
   socket.on('start_game', () => {
@@ -145,6 +154,7 @@ io.on('connection', (socket) => {
     if (result.gameOver) return handleGameOver(room, getRoomId(socket), result);
     emitState(room, getRoomId(socket));
     triggerAI(room, getRoomId(socket));
+    startTurnTimer(room, getRoomId(socket));
   });
 
   socket.on('defend', ({ attackCard, defenseCard }) => {
@@ -156,6 +166,7 @@ io.on('connection', (socket) => {
     if (result.gameOver) return handleGameOver(room, getRoomId(socket), result);
     emitState(room, getRoomId(socket));
     triggerAI(room, getRoomId(socket));
+    startTurnTimer(room, getRoomId(socket));
   });
 
   socket.on('take_cards', () => {
@@ -163,6 +174,63 @@ io.on('connection', (socket) => {
     const room = getRoom(socket);
     if (!room) return;
     const result = room.takeCards(currentUser.id);
+    if (result.error) return socket.emit('error', { message: result.error });
+    if (result.gameOver) return handleGameOver(room, getRoomId(socket), result);
+    emitState(room, getRoomId(socket));
+    triggerAI(room, getRoomId(socket));
+    startTurnTimer(room, getRoomId(socket));
+  });
+
+  socket.on('transfer', ({ card }) => {
+    if (!currentUser) return;
+    const room = getRoom(socket);
+    if (!room) return;
+    const result = room.transfer(currentUser.id, card);
+    if (result.error) return socket.emit('error', { message: result.error });
+    if (result.gameOver) return handleGameOver(room, getRoomId(socket), result);
+    emitState(room, getRoomId(socket));
+    triggerAI(room, getRoomId(socket));
+    startTurnTimer(room, getRoomId(socket));
+  });
+
+  socket.on('get_hint', () => {
+    if (!currentUser) return;
+    const room = getRoom(socket);
+    if (!room || !room.settings.isTraining) return;
+    
+    const difficulty = room.aiDifficulties?.[Object.keys(room.aiDifficulties)[0]] || room.settings.aiDifficulty;
+    const aiPlayer = new AIPlayer(room, difficulty);
+    const hint = aiPlayer.explainBestMove(currentUser.id);
+    
+    if (hint) {
+      socket.emit('training_hint', hint);
+    }
+  });
+
+  socket.on('exchange_trump6', () => {
+    if (!currentUser) return;
+    const room = getRoom(socket);
+    if (!room) return;
+    const result = room.exchangeTrump6(currentUser.id);
+    if (result.error) return socket.emit('error', { message: result.error });
+    emitState(room, getRoomId(socket));
+  });
+
+  socket.on('throw_in', ({ card }) => {
+    if (!currentUser) return;
+    const room = getRoom(socket);
+    if (!room) return;
+    const result = room.throwIn(currentUser.id, card);
+    if (result.error) return socket.emit('error', { message: result.error });
+    emitState(room, getRoomId(socket));
+    triggerAI(room, getRoomId(socket));
+  });
+
+  socket.on('pass_throw_in', () => {
+    if (!currentUser) return;
+    const room = getRoom(socket);
+    if (!room) return;
+    const result = room.passThrowIn(currentUser.id);
     if (result.error) return socket.emit('error', { message: result.error });
     emitState(room, getRoomId(socket));
     triggerAI(room, getRoomId(socket));
@@ -174,7 +242,6 @@ io.on('connection', (socket) => {
     const rid = getRoomId(socket);
     if (!room) return;
     
-    // Проверка что все атаки отбиты
     const attacks = room.table.filter(t => t.type === 'attack');
     const defenses = room.table.filter(t => t.type === 'defense');
     if (attacks.length !== defenses.length) {
@@ -186,6 +253,7 @@ io.on('connection', (socket) => {
     if (result.gameOver) return handleGameOver(room, rid, result);
     emitState(room, rid);
     triggerAI(room, rid);
+    startTurnTimer(room, rid);
   });
 
   socket.on('pass_attack', () => {
@@ -203,10 +271,17 @@ io.on('connection', (socket) => {
     const roomId = userRooms.get(socket.userId);
     const room = roomId ? rooms.get(roomId) : null;
     if (room) {
+      clearTurnTimer(room.id);
       room.removePlayer(socket.userId);
       socket.leave(roomId);
-      if (room.players.length === 0) rooms.delete(roomId);
-      else io.to(roomId).emit('room_updated', room.getPublicState());
+      if (room.players.length === 0) {
+        rooms.delete(roomId);
+      } else if (room.state === 'playing') {
+        io.to(roomId).emit('game_state', room.getState());
+        triggerAI(room, roomId);
+      } else {
+        io.to(roomId).emit('room_updated', room.getPublicState());
+      }
     }
     userRooms.delete(socket.userId);
     io.emit('rooms_updated', getPublicRooms());
@@ -229,10 +304,17 @@ io.on('connection', (socket) => {
       const roomId = userRooms.get(currentUser.id);
       const room = roomId ? rooms.get(roomId) : null;
       if (room) {
+        clearTurnTimer(room.id);
         room.removePlayer(currentUser.id);
         socket.leave(roomId);
-        if (room.players.length === 0) rooms.delete(roomId);
-        else io.to(roomId).emit('room_updated', room.getPublicState());
+        if (room.players.length === 0) {
+          rooms.delete(roomId);
+        } else if (room.state === 'playing') {
+          io.to(roomId).emit('game_state', room.getState());
+          triggerAI(room, roomId);
+        } else {
+          io.to(roomId).emit('room_updated', room.getPublicState());
+        }
       }
       userRooms.delete(currentUser.id);
       io.emit('rooms_updated', getPublicRooms());
@@ -245,10 +327,14 @@ function startGame(room, roomId) {
   io.to(roomId).emit('game_started', state);
   io.emit('rooms_updated', getPublicRooms());
   triggerAI(room, roomId);
+  startTurnTimer(room, roomId);
 }
 
 function triggerAI(room, roomId) {
-  if (room.state !== 'playing') return;
+  if (room.state !== 'playing') {
+    clearTurnTimer(room.id);
+    return;
+  }
 
   const attacker = room.players[room.attacker];
   const defender = room.players[room.defender];
@@ -257,13 +343,29 @@ function triggerAI(room, roomId) {
   const attackerIsAI = String(attacker.id).startsWith('ai_');
   const defenderIsAI = String(defender.id).startsWith('ai_');
 
-  const aiPlayer = new AIPlayer(room);
+  // Получаем сложность для конкретного ИИ
+  const attackerDifficulty = room.aiDifficulties?.[attacker.id] || room.settings.aiDifficulty || 'medium';
+  const defenderDifficulty = room.aiDifficulties?.[defender.id] || room.settings.aiDifficulty || 'medium';
 
   if (defenderIsAI && room.isDefenderTurn()) {
     setTimeout(() => {
       if (room.state !== 'playing') return;
       if (String(room.players[room.defender]?.id) !== String(defender.id)) return;
 
+      const aiPlayer = new AIPlayer(room, defenderDifficulty);
+      
+      // В режиме обучения показываем объяснение хода ИИ
+      if (room.settings.isTraining) {
+        const hint = aiPlayer.explainBestMove(defender.id);
+        if (hint) {
+          io.to(roomId).emit('ai_thinking', {
+            playerId: defender.id,
+            playerName: defender.username,
+            hint: hint
+          });
+        }
+      }
+      
       const decision = aiPlayer.makeDecision(defender.id);
       if (!decision) return;
 
@@ -273,16 +375,31 @@ function triggerAI(room, roomId) {
         emitState(room, roomId);
         triggerAI(room, roomId);
       } else if (decision.action === 'take') {
-        room.takeCards(defender.id);
+        const res = room.takeCards(defender.id);
+        if (res.gameOver) return handleGameOver(room, roomId, res);
         emitState(room, roomId);
         triggerAI(room, roomId);
       }
-    }, 1000);
+    }, room.settings.isTraining ? 2000 : 1000);
   } else if (attackerIsAI && room.isAttackerTurn()) {
     setTimeout(() => {
       if (room.state !== 'playing') return;
       if (String(room.players[room.attacker]?.id) !== String(attacker.id)) return;
 
+      const aiPlayer = new AIPlayer(room, attackerDifficulty);
+      
+      // В режиме обучения показываем объяснение хода ИИ
+      if (room.settings.isTraining) {
+        const hint = aiPlayer.explainBestMove(attacker.id);
+        if (hint) {
+          io.to(roomId).emit('ai_thinking', {
+            playerId: attacker.id,
+            playerName: attacker.username,
+            hint: hint
+          });
+        }
+      }
+      
       const decision = aiPlayer.makeDecision(attacker.id);
       if (!decision) return;
 
@@ -298,11 +415,12 @@ function triggerAI(room, roomId) {
         emitState(room, roomId);
         triggerAI(room, roomId);
       }
-    }, 1000);
+    }, room.settings.isTraining ? 2000 : 1000);
   }
 }
 
 function handleGameOver(room, roomId, result) {
+  clearTurnTimer(room.id);
   const playerIds = room.players.filter(p => !String(p.id).startsWith('ai_')).map(p => p.id);
   for (const pid of playerIds) {
     run('UPDATE users SET games_played = games_played + 1 WHERE id = ?', [pid]);
@@ -326,6 +444,44 @@ function getPublicRooms() {
     if (room.state === 'waiting') list.push(room.getPublicState());
   }
   return list;
+}
+
+function startTurnTimer(room, roomId) {
+  clearTurnTimer(room.id);
+  if (!room.settings.turnTime || room.settings.turnTime === 0) return;
+  if (room.state !== 'playing') return;
+
+  const timer = setTimeout(() => {
+    if (room.state !== 'playing') return;
+    turnTimers.delete(room.id);
+
+    const defender = room.players[room.defender];
+    const attacker = room.players[room.attacker];
+
+    if (room.isDefenderTurn() && defender) {
+      const result = room.takeCards(defender.id);
+      if (result.gameOver) return handleGameOver(room, roomId, result);
+      emitState(room, roomId);
+      triggerAI(room, roomId);
+      startTurnTimer(room, roomId);
+    } else if (room.isAttackerTurn() && attacker && room.table.length > 0) {
+      const result = room.endRound();
+      if (result.gameOver) return handleGameOver(room, roomId, result);
+      emitState(room, roomId);
+      triggerAI(room, roomId);
+      startTurnTimer(room, roomId);
+    }
+  }, room.settings.turnTime * 1000);
+
+  turnTimers.set(room.id, timer);
+}
+
+function clearTurnTimer(roomId) {
+  const timer = turnTimers.get(roomId);
+  if (timer) {
+    clearTimeout(timer);
+    turnTimers.delete(roomId);
+  }
 }
 
 async function main() {

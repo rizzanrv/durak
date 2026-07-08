@@ -2,3 +2,10 @@ node_modules/
 data/
 .env
 *.log
+TODO.md
+SUMMARY.md
+IMPROVEMENTS.md
+FEATURES.md
+mimo.exe
+MOBILE_FEATURES.md
+TEST_GUIDE.md

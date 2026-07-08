@@ -3,8 +3,8 @@
 
   let currentUser = null, socket = null, currentRoom = null;
   let selectedCard = null, gameState = null, myHand = [];
-  let i18nData = {}, currentLang = localStorage.getItem('lang') || 'en';
-  let dragCard = null;
+  let i18nData = {}, currentLang = localStorage.getItem('lang') || 'ru';
+  let dragCard = null, currentFriendToPlay = null;
 
   const $ = s => document.querySelector(s);
   const $$ = s => document.querySelectorAll(s);
@@ -97,6 +97,23 @@
     socket.on('error', d => showToast(d.message));
     socket.on('game_invite', d => showInviteModal(d));
     socket.on('online_users', u => updateOnlineStatus(u));
+    socket.on('training_hint', h => showTrainingHint(h));
+    socket.on('ai_thinking', d => showAIThinking(d));
+  }
+
+  function showTrainingHint(hint) {
+    const hintEl = $('#training-hint');
+    $('#hint-advice').textContent = hint.advice || '';
+    $('#hint-explanation').textContent = hint.explanation || '';
+    hintEl.style.display = 'block';
+    setTimeout(() => {
+      hintEl.style.display = 'none';
+    }, 8000);
+  }
+
+  function showAIThinking(data) {
+    if (!data.hint) return;
+    showToast(`${data.playerName}: ${data.hint.advice}`, 'info');
   }
 
   function showInviteModal(data) {
@@ -110,24 +127,113 @@
     }
   }
 
+  let currentModeSettings = null;
+  
   function initGameModes() {
+    
     $$('.mode-card').forEach(card => card.onclick = () => {
       const mode = card.dataset.mode;
+      
       if (mode === 'vs_ai') {
-        socket.emit('create_room', { mode: 'classic', isPrivate: false });
-        setTimeout(() => { socket.emit('add_ai'); setTimeout(() => socket.emit('player_ready'), 500); }, 500);
+        // Показываем настройки для игры с ИИ
+        currentModeSettings = { mode: 'classic', vsAI: true, isTraining: false };
+        showGameSettings(currentModeSettings);
+      } else if (mode === 'training') {
+        // Режим обучения
+        currentModeSettings = { mode: 'classic', vsAI: true, isTraining: true };
+        showGameSettings(currentModeSettings);
+      } else if (mode === 'friends') {
+        // Игра с друзьями - показываем настройки
+        currentModeSettings = { mode: 'classic', vsAI: false, isTraining: false };
+        showGameSettings(currentModeSettings);
       } else if (mode === 'custom') {
         showRoomList();
       } else {
-        socket.emit('create_room', { mode, isPrivate: false });
+        // Быстрая игра без настроек
+        socket.emit('create_room', { mode, settings: {} });
       }
     });
+    
+    $('#btn-cancel-settings').onclick = () => {
+      $('#game-settings-modal').style.display = 'none';
+      currentModeSettings = null;
+    };
+    
+    $('#btn-confirm-settings').onclick = () => {
+      if (!currentModeSettings) return;
+      
+      const settings = {
+        gameType: $('#setting-game-type').value,
+        deckSize: parseInt($('#setting-deck-size').value),
+        maxPlayers: parseInt($('#setting-max-players').value),
+        turnTime: parseInt($('#setting-turn-time').value),
+        aiDifficulty: $('#setting-ai-difficulty').value,
+        isTraining: currentModeSettings.isTraining || false
+      };
+      
+      $('#game-settings-modal').style.display = 'none';
+      
+      socket.emit('create_room', { mode: currentModeSettings.mode, settings });
+      
+      // Если игра с ИИ, добавляем ИИ после создания комнаты
+      if (currentModeSettings.vsAI) {
+        setTimeout(() => {
+          socket.emit('add_ai', { difficulty: settings.aiDifficulty });
+        }, 500);
+      }
+      
+      // Если игра с другом, приглашаем его
+      if (currentModeSettings.withFriend) {
+        setTimeout(() => {
+          socket.emit('invite_friend', { friendId: currentModeSettings.withFriend });
+          showToast(`Приглашение отправлено ${currentModeSettings.withFriend}`, 'success');
+        }, 500);
+      }
+      
+      currentModeSettings = null;
+      currentFriendToPlay = null;
+    };
+    
     $('#btn-back-lobby').onclick = () => { socket.emit('leave_room'); $('#lobby-view').style.display = 'none'; currentRoom = null; };
     $('#btn-ready').onclick = () => { socket.emit('player_ready'); $('#btn-ready').disabled = true; $('#btn-ready').textContent = t('ready_bang'); };
-    $('#btn-add-ai').onclick = () => socket.emit('add_ai');
+    $('#btn-add-ai').onclick = showAIDifficultyModal;
+    $('#btn-add-ai').onclick = showAIDifficultyModal;
     $('#btn-start').onclick = () => socket.emit('start_game');
     $('#btn-invite-friend').onclick = showInviteFriendsModal;
     $('#btn-close-invite').onclick = () => { $('#invite-friends-modal').style.display = 'none'; };
+  }
+
+  function showGameSettings(modeSettings) {
+    const modal = $('#game-settings-modal');
+    const aiGroup = $('#ai-difficulty-group');
+    
+    // Показываем/скрываем выбор сложности ИИ
+    if (modeSettings.vsAI) {
+      aiGroup.style.display = 'block';
+    } else {
+      aiGroup.style.display = 'none';
+    }
+    
+    // Если обучение, показываем соответствующие настройки
+    if (modeSettings.isTraining) {
+      $('#setting-max-players').value = '2';
+      $('#setting-max-players').disabled = true;
+    } else {
+      $('#setting-max-players').disabled = false;
+    }
+    
+    modal.style.display = 'flex';
+  }
+
+  function showGameSettingsForFriend(friendName) {
+    currentModeSettings = { mode: 'classic', vsAI: false, isTraining: false, withFriend: friendName };
+    showGameSettings(currentModeSettings);
+  }
+
+  function showAIDifficultyModal() {
+    const difficulty = prompt(t('ai_difficulty') + ':\n1. ' + t('difficulty_easy') + '\n2. ' + t('difficulty_medium') + '\n3. ' + t('difficulty_hard'), '2');
+    const diffMap = { '1': 'easy', '2': 'medium', '3': 'hard' };
+    socket.emit('add_ai', { difficulty: diffMap[difficulty] || 'medium' });
   }
 
   function showInviteFriendsModal() {
@@ -167,6 +273,28 @@
     const c = $('#lobby-players'); c.innerHTML = '';
     const h = document.createElement('div'); h.className = 'friend-section-title';
     h.textContent = `${t('players')} (${room.players.length}/${room.maxPlayers})`; c.appendChild(h);
+    
+    // Показываем настройки комнаты
+    if (room.settings) {
+      const settingsDiv = document.createElement('div');
+      settingsDiv.style.cssText = 'padding:12px 16px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:16px;font-size:13px;color:var(--text-secondary);';
+      const gameTypeText = room.settings.gameType === 'perevodnoy' ? t('perevodnoy') : t('podkidnoy');
+      const turnTimeText = room.settings.turnTime === 0 ? t('unlimited') : `${room.settings.turnTime} ${t('seconds')}`;
+      settingsDiv.innerHTML = `
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+          <span>${t('game_type')}:</span><strong style="color:var(--text-primary);">${gameTypeText}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+          <span>${t('deck_size')}:</span><strong style="color:var(--text-primary);">${room.settings.deckSize} ${t('deck_size').toLowerCase()}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span>${t('turn_time')}:</span><strong style="color:var(--text-primary);">${turnTimeText}</strong>
+        </div>
+        ${room.settings.isTraining ? `<div style="margin-top:8px;padding:8px;background:rgba(253,203,110,0.15);border-radius:6px;color:var(--yellow);font-weight:600;text-align:center;">${t('training_mode')}</div>` : ''}
+      `;
+      c.appendChild(settingsDiv);
+    }
+    
     room.players.forEach(p => {
       const d = document.createElement('div'); d.className = `lobby-player ${p.isReady ? 'ready' : ''}`;
       d.innerHTML = `<div class="friend-avatar" style="background:${String(p.id).startsWith('ai_')?'#E17055':'#6C5CE7'};width:36px;height:36px;font-size:13px;">${p.username[0].toUpperCase()}</div><span class="lobby-player-name">${p.username}${p.id===currentUser.id?' (You)':''}</span>${p.isReady?`<span class="lobby-player-status">${t('ready_bang')}</span>`:`<span style="color:var(--text-muted);font-size:11px;">${t('not_ready')}</span>`}`;
@@ -184,10 +312,26 @@
     rooms.forEach(r => { const d = document.createElement('div'); d.className = 'room-card'; d.innerHTML = `<div class="room-info"><h4>${r.mode}</h4><p>${new Date(r.createdAt).toLocaleTimeString()}</p></div><span class="room-players-count">${r.players.length}/${r.maxPlayers}</span>`; d.onclick = () => socket.emit('join_room', { roomId: r.id }); c.appendChild(d); });
   }
 
-  function enterGame(state) { showScreen('game-screen'); selectedCard = null; setupDragDrop(); updateGame(state); }
+  function enterGame(state) { 
+    showScreen('game-screen'); 
+    selectedCard = null; 
+    setupDragDrop(); 
+    
+    // Показываем кнопку подсказки в режиме обучения
+    if (state.settings && state.settings.isTraining) {
+      $('#btn-hint').style.display = 'inline-block';
+      $('#btn-hint').onclick = () => socket.emit('get_hint');
+    } else {
+      $('#btn-hint').style.display = 'none';
+    }
+    
+    updateGame(state); 
+  }
 
   function setupDragDrop() {
     const tableArea = $('#table-area');
+    
+    // Desktop drag & drop
     tableArea.ondragover = e => { e.preventDefault(); tableArea.classList.add('drag-over'); };
     tableArea.ondragleave = () => tableArea.classList.remove('drag-over');
     tableArea.ondrop = e => {
@@ -195,24 +339,52 @@
       tableArea.classList.remove('drag-over');
       if (dragCard) { playCard(dragCard); dragCard = null; }
     };
-    tableArea.ontouchmove = () => {};
-    tableArea.ontouchend = () => {};
+    
+    // Mobile touch handling - improved
+    let touchStartTime = 0;
+    let touchMoved = false;
+    
+    tableArea.addEventListener('touchstart', (e) => {
+      touchStartTime = Date.now();
+      touchMoved = false;
+    }, { passive: true });
+    
+    tableArea.addEventListener('touchmove', () => {
+      touchMoved = true;
+    }, { passive: true });
+    
+    tableArea.addEventListener('touchend', (e) => {
+      const touchDuration = Date.now() - touchStartTime;
+      
+      // Quick tap on table area
+      if (!touchMoved && touchDuration < 300) {
+        e.preventDefault();
+      }
+    });
   }
 
   function updateGame(state) {
     const mp = state.players.find(p => p.id === currentUser.id);
-    myHand = mp ? mp.hand : [];
+    myHand = mp ? sortHand(mp.hand, state.trump) : [];
 
     const td = $('#trump-display');
     if (state.trump) {
       const sym = SUIT_SYMBOLS[state.trump];
-      td.innerHTML = `<span style="font-size:18px;">${sym}</span> <span style="font-size:13px;font-weight:700;">${state.trump.toUpperCase()}</span>`;
       td.className = `trump-display ${state.trump}`;
+      const badgeSuit = $('#trump-badge-suit');
+      if (badgeSuit) badgeSuit.textContent = sym;
     }
 
     $('#deck-count-text').textContent = state.deckCount;
     const modeNames = { classic: 'Classic', transfer: 'Transfer' };
-    $('#game-mode-label').textContent = modeNames[state.mode] || state.mode;
+    let modeText = modeNames[state.mode] || state.mode;
+    
+    // Показываем таймер если есть ограничение
+    if (state.turnTimeRemaining !== null && state.turnTimeRemaining !== undefined && state.settings && state.settings.turnTime > 0) {
+      modeText += ` • ${state.turnTimeRemaining}s`;
+    }
+    
+    $('#game-mode-label').textContent = modeText;
 
     updateOpponents(state);
     updateTable(state);
@@ -223,7 +395,7 @@
       const c = currentUser.avatarColor||'#6C5CE7';
       $('#game-player-avatar').textContent = currentUser.username[0].toUpperCase();
       $('#game-player-avatar').style.background = c;
-      $('#game-player-name').textContent = `${currentUser.username} (${mp.handCount})`;
+      $('#game-player-name').innerHTML = `${currentUser.username} <span class="hand-count-badge">${mp.handCount}</span>`;
     }
     updateActions(state);
   }
@@ -238,11 +410,11 @@
 
     let hint = '';
     if (isAttacker && state.isAttackerTurn) {
-      hint = state.table.length > 0 ? 'Your turn - add a card or pass' : 'Your turn - play a card';
+      hint = state.table.length > 0 ? t('turn_your_attack_add') : t('turn_your_attack');
     } else if (isDefender && state.isDefenderTurn) {
-      hint = 'Defend - play a higher card or take';
+      hint = t('turn_defend');
     } else {
-      hint = `${attackerName} attacks ${defenderName}`;
+      hint = t('turn_waits', { attacker: attackerName, defender: defenderName });
     }
 
     const existing = document.getElementById('turn-hint');
@@ -266,7 +438,7 @@
       if (state.defender === i) d.classList.add('is-defender');
       const role = state.attacker === i ? 'ATK' : state.defender === i ? 'DEF' : '';
       const roleColor = state.attacker === i ? 'var(--accent)' : state.defender === i ? 'var(--red)' : 'var(--text-muted)';
-      d.innerHTML = `<div class="friend-avatar" style="background:${String(p.id).startsWith('ai_')?'#E17055':'#6C5CE7'};width:32px;height:32px;margin:0 auto 2px;font-size:12px;">${p.username[0].toUpperCase()}</div><div class="opponent-name">${p.username}</div><div style="font-size:9px;font-weight:700;color:${roleColor};margin-bottom:2px;">${role}</div><div class="opponent-cards">${p.handCount} cards</div>`;
+      d.innerHTML = `<div class="friend-avatar" style="background:${String(p.id).startsWith('ai_')?'#E17055':'#6C5CE7'};width:32px;height:32px;margin:0 auto 2px;font-size:12px;">${p.username[0].toUpperCase()}</div><div class="opponent-name">${p.username}</div><div style="font-size:9px;font-weight:700;color:${roleColor};margin-bottom:2px;">${role}</div><div class="opponent-cards"><span class="card-count-icon">${SUIT_SYMBOLS[state.trump] || '?'}</span> <span class="card-count-num">${p.handCount}</span></div>`;
       c.appendChild(d);
     });
   }
@@ -292,6 +464,16 @@
     if (!state.table.length) { const h = document.createElement('div'); h.className = 'table-hint'; h.textContent = t('table_empty'); c.appendChild(h); }
   }
 
+  function sortHand(hand, trump) {
+    const suitOrder = { hearts: 0, diamonds: 1, clubs: 2, spades: 3 };
+    return [...hand].sort((a, b) => {
+      if (a.suit === trump && b.suit !== trump) return 1;
+      if (a.suit !== trump && b.suit === trump) return -1;
+      if (a.suit === b.suit) return a.value - b.value;
+      return (suitOrder[a.suit] || 0) - (suitOrder[b.suit] || 0);
+    });
+  }
+
   function updateHand(state) {
     const c = $('#player-hand'); c.innerHTML = '';
     const mp = state.players.find(p => p.id === currentUser.id);
@@ -300,13 +482,22 @@
     const isAttacker = state.attacker === myIdx;
     const isDefender = state.defender === myIdx;
     
-    myHand.forEach(card => {
+    const sortedHand = sortHand(myHand, state.trump);
+    const handCount = sortedHand.length;
+    c.classList.remove('overlap', 'tight', 'ultra');
+    if (handCount > 10) c.classList.add('ultra');
+    else if (handCount > 8) c.classList.add('tight');
+    else if (handCount > 6) c.classList.add('overlap');
+
+    sortedHand.forEach(card => {
       const el = createCardEl(card, true);
       if (selectedCard && selectedCard.suit===card.suit && selectedCard.rank===card.rank) el.classList.add('selected');
       
-      // Визуально показываем валидные карты
       let isPlayable = false;
-      if (isDefender && state.isDefenderTurn) {
+      if (state.throwInProgress && state.throwInBy === myIdx && myIdx !== state.defender) {
+        const tableRanks = new Set(state.table.map(t => t.card.rank));
+        isPlayable = tableRanks.size === 0 || tableRanks.has(card.rank);
+      } else if (isDefender && state.isDefenderTurn) {
         const attacks = state.table.filter(t => t.type === 'attack');
         const defenses = state.table.filter(t => t.type === 'defense');
         for (const atk of attacks) {
@@ -336,40 +527,95 @@
       }
       
       el.onclick = () => playCard(card);
-      el.ondragstart = e => { dragCard = card; el.classList.add('dragging'); e.dataTransfer.setData('text/plain', card.rank+card.suit); };
-      el.ondragend = () => { el.classList.remove('dragging'); dragCard = null; };
+      
+      // Desktop drag
+      el.ondragstart = e => { 
+        dragCard = card; 
+        el.classList.add('dragging'); 
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', card.rank + card.suit); 
+      };
+      el.ondragend = () => { 
+        el.classList.remove('dragging'); 
+        dragCard = null; 
+      };
+      
+      // Mobile touch - improved with visual feedback
       let touchStartY = 0, touchStartX = 0, cloned = null;
-      el.ontouchstart = e => { touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; };
+      let touchStartTime = 0;
+      let hasMoved = false;
+      
+      el.ontouchstart = e => { 
+        touchStartX = e.touches[0].clientX; 
+        touchStartY = e.touches[0].clientY; 
+        touchStartTime = Date.now();
+        hasMoved = false;
+        el.classList.add('touch-active');
+      };
+      
       el.ontouchmove = e => {
         const dy = e.touches[0].clientY - touchStartY;
         const dx = e.touches[0].clientX - touchStartX;
-        if (Math.abs(dy) > 30 && !cloned) {
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance > 10) {
+          hasMoved = true;
+        }
+        
+        if (Math.abs(dy) > 40 && !cloned) {
           cloned = el.cloneNode(true);
           cloned.style.position = 'fixed';
           cloned.style.pointerEvents = 'none';
           cloned.style.zIndex = '9999';
-          cloned.style.opacity = '0.9';
-          cloned.style.transform = 'scale(1.1)';
+          cloned.style.opacity = '0.95';
+          cloned.style.transform = 'scale(1.15) rotate(5deg)';
+          cloned.style.boxShadow = '0 20px 60px rgba(0, 0, 0, 0.6)';
           document.body.appendChild(cloned);
-          el.style.opacity = '0.3';
+          el.style.opacity = '0.4';
+          navigator.vibrate?.(50); // Haptic feedback
         }
+        
         if (cloned) {
           cloned.style.left = (e.touches[0].clientX - 36) + 'px';
           cloned.style.top = (e.touches[0].clientY - 54) + 'px';
         }
+        
         e.preventDefault();
       };
+      
       el.ontouchend = e => {
+        el.classList.remove('touch-active');
+        const touchDuration = Date.now() - touchStartTime;
+        
         if (cloned) {
-          cloned.remove(); el.style.opacity = '1';
+          cloned.remove(); 
+          el.style.opacity = '1';
           const touch = e.changedTouches[0];
           const tableRect = $('#table-area').getBoundingClientRect();
+          
           if (touch.clientY < tableRect.bottom && touch.clientY > tableRect.top - 50) {
             playCard(card);
+            navigator.vibrate?.(100); // Success haptic
+          } else {
+            navigator.vibrate?.(30); // Cancel haptic
           }
+        } else if (!hasMoved && touchDuration < 300) {
+          // Quick tap - play card directly
+          playCard(card);
+        }
+        
+        cloned = null;
+      };
+      
+      el.ontouchcancel = () => {
+        el.classList.remove('touch-active');
+        if (cloned) {
+          cloned.remove();
+          el.style.opacity = '1';
         }
         cloned = null;
       };
+      
       c.appendChild(el);
     });
   }
@@ -383,18 +629,62 @@
     const isDefender = state.defender === myIdx;
 
     a.innerHTML = '';
+    
     if (isDefender && state.isDefenderTurn) {
-      const btn = document.createElement('button');
-      btn.className = 'btn-take'; btn.textContent = t('take');
-      btn.onclick = () => { socket.emit('take_cards'); selectedCard = null; };
-      a.appendChild(btn);
+      // Кнопка "Взять"
+      const takeBtn = document.createElement('button');
+      takeBtn.className = 'btn-take'; takeBtn.textContent = t('take');
+      takeBtn.onclick = () => { socket.emit('take_cards'); selectedCard = null; };
+      a.appendChild(takeBtn);
+      
+      // Кнопка "Перевести" для переводного дурака
+      if (state.settings && state.settings.gameType === 'perevodnoy' && state.table.length === 1) {
+        const transferBtn = document.createElement('button');
+        transferBtn.className = 'btn btn-secondary'; 
+        transferBtn.textContent = t('transfer');
+        transferBtn.style.cssText = 'width:auto;padding:10px 20px;font-size:14px;margin-left:8px;';
+        transferBtn.onclick = () => {
+          if (selectedCard) {
+            socket.emit('transfer', { card: selectedCard });
+            selectedCard = null;
+          } else {
+            showToast(t('select_transfer'), 'error');
+          }
+        };
+        a.appendChild(transferBtn);
+      }
     } else if (isAttacker && state.isAttackerTurn && state.table.length > 0) {
       const btn = document.createElement('button');
-      btn.className = 'btn btn-secondary'; btn.textContent = 'Pass';
+      btn.className = 'btn btn-secondary'; btn.textContent = t('pass');
       btn.style.cssText = 'width:auto;padding:10px 28px;font-size:14px;';
       btn.onclick = () => { socket.emit('end_round'); selectedCard = null; };
       a.appendChild(btn);
     }
+
+    if (state.throwInProgress && state.throwInBy !== undefined) {
+      const myIdx = state.players.findIndex(p => p.id === currentUser.id);
+      if (state.throwInBy === myIdx && myIdx !== state.defender) {
+        const passBtn = document.createElement('button');
+        passBtn.className = 'btn btn-secondary';
+        passBtn.textContent = t('pass');
+        passBtn.style.cssText = 'width:auto;padding:10px 28px;font-size:14px;';
+        passBtn.onclick = () => { socket.emit('pass_throw_in'); };
+        a.appendChild(passBtn);
+      }
+    }
+
+    if (state.deckCount > 0 && state.faceUpTrump) {
+      const hasTrump6 = myHand.some(c => c.suit === state.trump && c.rank === '6');
+      if (hasTrump6) {
+        const exBtn = document.createElement('button');
+        exBtn.className = 'btn btn-secondary';
+        exBtn.textContent = '6→' + SUIT_SYMBOLS[state.trump];
+        exBtn.style.cssText = 'width:auto;padding:10px 16px;font-size:13px;background:var(--yellow-dim);color:var(--yellow);border-color:var(--yellow);';
+        exBtn.onclick = () => { socket.emit('exchange_trump6'); };
+        a.appendChild(exBtn);
+      }
+    }
+
     a.style.display = a.children.length > 0 ? 'flex' : 'none';
   }
 
@@ -403,7 +693,17 @@
     const cls = [small?'card-small':'card', card.suit];
     if (card.suit === gameState?.trump) cls.push('trump');
     d.className = cls.join(' ');
-    d.innerHTML = `<div class="card-corner"><span class="card-rank">${card.rank}</span><span class="card-suit-small">${SUIT_SYMBOLS[card.suit]}</span></div><div class="card-center">${SUIT_SYMBOLS[card.suit]}</div><div class="card-corner" style="align-self:flex-end;"><span class="card-suit-small">${SUIT_SYMBOLS[card.suit]}</span><span class="card-rank">${card.rank}</span></div>`;
+    const suitSym = SUIT_SYMBOLS[card.suit];
+    d.innerHTML = `
+      <div class="card-corner">
+        <span class="card-rank">${card.rank}</span>
+        <span class="card-suit-small">${suitSym}</span>
+      </div>
+      <div class="card-center">${suitSym}</div>
+      <div class="card-corner" style="align-self:flex-end;transform:rotate(180deg);">
+        <span class="card-rank">${card.rank}</span>
+        <span class="card-suit-small">${suitSym}</span>
+      </div>`;
     return d;
   }
 
@@ -412,6 +712,17 @@
     const mp = gameState.players.find(p => p.id === currentUser.id);
     if (!mp) return;
     const myIdx = gameState.players.indexOf(mp);
+
+    if (gameState.throwInProgress && gameState.throwInBy === myIdx && myIdx !== gameState.defender) {
+      const tableRanks = new Set(gameState.table.map(t => t.card.rank));
+      if (tableRanks.size > 0 && !tableRanks.has(card.rank)) {
+        showToast(t('cant_add_rank'), 'error');
+        return;
+      }
+      socket.emit('throw_in', { card });
+      selectedCard = null;
+      return;
+    }
     
     // Защита
     if (gameState.defender === myIdx && gameState.isDefenderTurn) {
@@ -431,13 +742,13 @@
       }
       
       if (!attackToDefend) {
-        showToast('All attacks are defended', 'error');
+        showToast(t('all_defended'), 'error');
         return;
       }
       
       // Проверка что картой можно бить
       if (!canBeatCard(card, attackToDefend, gameState.trump)) {
-        showToast('This card cannot beat the attack', 'error');
+        showToast(t('cant_beat_attack'), 'error');
         return;
       }
       
@@ -450,7 +761,7 @@
       if (gameState.table.length > 0) {
         const tableRanks = new Set(gameState.table.map(t => t.card.rank));
         if (!tableRanks.has(card.rank)) {
-          showToast('Can only add cards matching table ranks', 'error');
+          showToast(t('cant_add_rank'), 'error');
           return;
         }
       }
@@ -458,7 +769,13 @@
       socket.emit('attack', { card });
       selectedCard = null;
     } else {
-      showToast('Not your turn', 'error');
+      // Если защищающийся, но не его ход - сохраняем выбор для кнопки "Перевести"
+      if (gameState.defender === myIdx && gameState.settings && gameState.settings.gameType === 'perevodnoy') {
+        selectedCard = card;
+        updateHand(gameState);
+        return;
+      }
+      showToast(t('not_your_turn'), 'error');
     }
   }
 
@@ -543,8 +860,16 @@
     list.forEach(f => {
       const d = document.createElement('div'); d.className = 'friend-item';
       const isOnline = onlineUsers.some(u => u.username === f.username);
-      d.innerHTML = `<div class="friend-avatar" style="background:${f.avatar_color}">${f.username[0].toUpperCase()}${isOnline?'<div class="online-dot"></div>':''}</div><div class="friend-info"><div class="friend-name">${f.username}</div><div class="friend-rating">${f.rating} ${t('rating')}</div></div><div class="friend-actions">${currentRoom?`<button class="btn-invite" data-friend="${f.username}">${t('invite')}</button>`:''}<button class="btn-remove" data-id="${f.id}">${t('remove')}</button></div>`;
+      const actionButtons = currentRoom 
+        ? `<button class="btn-invite" data-friend="${f.username}">${t('invite')}</button>`
+        : `<button class="btn-play-friend" data-friend="${f.username}" data-friend-id="${f.id}">🎮 ${t('play')}</button>`;
+      d.innerHTML = `<div class="friend-avatar" style="background:${f.avatar_color}">${f.username[0].toUpperCase()}${isOnline?'<div class="online-dot"></div>':''}</div><div class="friend-info"><div class="friend-name">${f.username}</div><div class="friend-rating">${f.rating} ${t('rating')}</div></div><div class="friend-actions">${actionButtons}<button class="btn-remove" data-id="${f.id}">${t('remove')}</button></div>`;
       c.appendChild(d);
+    });
+    c.querySelectorAll('.btn-play-friend').forEach(b => b.onclick = () => {
+      const friendName = b.dataset.friend;
+      currentFriendToPlay = friendName;
+      showGameSettingsForFriend(friendName);
     });
     c.querySelectorAll('.btn-invite').forEach(b => b.onclick = () => { socket.emit('invite_friend', { friendId: b.dataset.friend }); showToast(t('inv_sent'), 'success'); });
     c.querySelectorAll('.btn-remove').forEach(b => b.onclick = async () => { await api('DELETE', `/friends/${b.dataset.id}`); loadFriends(); });

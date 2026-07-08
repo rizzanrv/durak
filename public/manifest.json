@@ -1,14 +1,14 @@
 {
-  "name": "Durak - Card Game",
-  "short_name": "Durak",
-  "description": "Classic Russian card game Durak - play online with friends",
+  "name": "Дурак Онлайн - Карточная Игра",
+  "short_name": "Дурак",
+  "description": "Классическая русская карточная игра Дурак - играй онлайн с друзьями и ИИ",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0a0f",
-  "theme_color": "#0a0a0f",
-  "orientation": "portrait",
+  "background_color": "#0f0f1a",
+  "theme_color": "#0f0f1a",
+  "orientation": "any",
   "scope": "/",
-  "lang": "en",
+  "lang": "ru",
   "categories": ["games", "entertainment"],
   "icons": [
     {
@@ -22,18 +22,105 @@
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-72.svg",
+      "sizes": "72x72",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/icons/icon-96.svg",
+      "sizes": "96x96",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/icons/icon-128.svg",
+      "sizes": "128x128",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/icons/icon-144.svg",
+      "sizes": "144x144",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/icons/icon-152.svg",
+      "sizes": "152x152",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/icons/icon-384.svg",
+      "sizes": "384x384",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
     }
   ],
   "shortcuts": [
     {
-      "name": "Play vs AI",
+      "name": "Против ИИ",
       "url": "/?mode=vs_ai",
-      "description": "Quick game against computer"
+      "description": "Быстрая игра против компьютера",
+      "icons": [
+        {
+          "src": "/icons/icon-96.svg",
+          "sizes": "96x96"
+        }
+      ]
     },
     {
-      "name": "Find Game",
-      "url": "/?mode=custom",
-      "description": "Join an online match"
+      "name": "Обучение",
+      "url": "/?mode=training",
+      "description": "Режим обучения с подсказками",
+      "icons": [
+        {
+          "src": "/icons/icon-96.svg",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "С друзьями",
+      "url": "/?tab=friends",
+      "description": "Играть с друзьями",
+      "icons": [
+        {
+          "src": "/icons/icon-96.svg",
+          "sizes": "96x96"
+        }
+      ]
     }
-  ]
+  ],
+  "screenshots": [
+    {
+      "src": "/img/screenshot-mobile.png",
+      "sizes": "540x720",
+      "type": "image/png",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "/img/screenshot-desktop.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    }
+  ],
+  "prefer_related_applications": false,
+  "share_target": {
+    "action": "/share",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
 }

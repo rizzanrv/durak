@@ -5,14 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Durak">
-  <meta name="theme-color" content="#0a0a0f">
+  <meta name="apple-mobile-web-app-title" content="Дурак">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0f0f1a">
+  <meta name="description" content="Играй в Дурак онлайн - классическая карточная игра с друзьями и ИИ">
+  <meta name="keywords" content="дурак, карты, игра, онлайн, подкидной, переводной">
+  
+  <!-- Touch Icons -->
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/img/icon-192.svg">
-  <title>Durak</title>
+  <link rel="icon" type="image/svg+xml" href="/img/icon-192.svg">
+  
+  <!-- Fonts -->
+  <title>Дурак Онлайн</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -108,10 +117,78 @@
               <svg width="36" height="36" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="20" r="12" fill="#1a1a2e" stroke="#E17055" stroke-width="1.5"/><rect x="16" y="16" width="6" height="6" rx="1" fill="#E17055"/><rect x="26" y="16" width="6" height="6" rx="1" fill="#E17055"/></svg>
               <h3 data-i18n="vs_ai">vs AI</h3><p data-i18n="vs_ai_desc">Single player vs computer</p>
             </button>
+            <button class="mode-card" data-mode="training">
+              <svg width="36" height="36" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="16" fill="#1a1a2e" stroke="#FDCB6E" stroke-width="1.5"/><path d="M24 16v16M16 24h16" stroke="#FDCB6E" stroke-width="2"/></svg>
+              <h3 data-i18n="training_mode">Training</h3><p data-i18n="training_desc">Learn with AI hints</p>
+            </button>
+            <button class="mode-card" data-mode="friends">
+              <svg width="36" height="36" viewBox="0 0 48 48" fill="none"><circle cx="18" cy="16" r="6" fill="#1a1a2e" stroke="#00B894" stroke-width="1.5"/><circle cx="30" cy="16" r="6" fill="#1a1a2e" stroke="#00B894" stroke-width="1.5"/><path d="M12 32c0-4 4-8 12-8s12 4 12 8" stroke="#00B894" stroke-width="1.5" fill="none"/></svg>
+              <h3 data-i18n="join_friend">With Friends</h3><p data-i18n="custom_desc">Create or join room</p>
+            </button>
             <button class="mode-card" data-mode="custom">
               <svg width="36" height="36" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="16" fill="#1a1a2e" stroke="#0984E3" stroke-width="1.5"/><path d="M24 16v16M16 24h16" stroke="#0984E3" stroke-width="2"/></svg>
               <h3 data-i18n="custom">Custom</h3><p data-i18n="custom_desc">Create or join room</p>
             </button>
+          </div>
+
+          <div id="game-settings-modal" class="modal" style="display:none;">
+            <div class="modal-content" style="max-width:500px;">
+              <h2 data-i18n="game_settings">Game Settings</h2>
+              
+              <div class="setting-group">
+                <label data-i18n="game_type">Game Type</label>
+                <select id="setting-game-type">
+                  <option value="podkidnoy" data-i18n="podkidnoy">Podkidnoy</option>
+                  <option value="perevodnoy" data-i18n="perevodnoy">Perevodnoy</option>
+                </select>
+              </div>
+
+              <div class="setting-group">
+                <label data-i18n="deck_size">Deck Size</label>
+                <select id="setting-deck-size">
+                  <option value="24" data-i18n="cards_24">24 cards</option>
+                  <option value="36" selected data-i18n="cards_36">36 cards</option>
+                  <option value="52" data-i18n="cards_52">52 cards</option>
+                  <option value="72" data-i18n="cards_72">72 cards</option>
+                </select>
+              </div>
+
+              <div class="setting-group">
+                <label data-i18n="max_players">Max Players</label>
+                <select id="setting-max-players">
+                  <option value="2" selected>2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                  <option value="6">6</option>
+                </select>
+              </div>
+
+              <div class="setting-group">
+                <label data-i18n="turn_time">Turn Time</label>
+                <select id="setting-turn-time">
+                  <option value="0" data-i18n="unlimited">Unlimited</option>
+                  <option value="30">30 <span data-i18n="seconds">sec</span></option>
+                  <option value="60" selected>60 <span data-i18n="seconds">sec</span></option>
+                  <option value="90">90 <span data-i18n="seconds">sec</span></option>
+                  <option value="120">120 <span data-i18n="seconds">sec</span></option>
+                </select>
+              </div>
+
+              <div class="setting-group" id="ai-difficulty-group">
+                <label data-i18n="ai_difficulty">AI Difficulty</label>
+                <select id="setting-ai-difficulty">
+                  <option value="easy" data-i18n="difficulty_easy">Easy</option>
+                  <option value="medium" selected data-i18n="difficulty_medium">Medium</option>
+                  <option value="hard" data-i18n="difficulty_hard">Hard</option>
+                </select>
+              </div>
+
+              <div class="modal-actions">
+                <button class="btn btn-secondary" id="btn-cancel-settings">Cancel</button>
+                <button class="btn btn-primary" id="btn-confirm-settings" data-i18n="create_game">Create Game</button>
+              </div>
+            </div>
           </div>
 
           <div id="lobby-view" class="lobby-view" style="display:none;">
@@ -170,12 +247,19 @@
     <div id="game-screen" class="screen">
       <div class="game-header">
         <div class="game-info">
-          <div class="trump-display" id="trump-display"></div>
+          <div class="trump-display" id="trump-display">
+            <div class="trump-badge">
+              <span class="trump-badge-label" data-i18n="trump">TRUMP</span>
+              <span class="trump-badge-suit" id="trump-badge-suit"></span>
+            </div>
+          </div>
           <div class="deck-count" id="deck-count">
-            <div style="position:relative;width:28px;height:40px;">
-              <div style="position:absolute;width:24px;height:36px;border-radius:4px;background:var(--card-bg);border:1.5px solid var(--card-border);transform:rotate(-5deg);"></div>
-              <div style="position:absolute;width:24px;height:36px;border-radius:4px;background:var(--card-bg);border:1.5px solid var(--card-border);transform:rotate(3deg);left:3px;"></div>
-              <span style="position:absolute;bottom:-2px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:800;color:var(--accent);" id="deck-count-text">0</span>
+            <div class="deck-count-inner">
+              <div class="deck-pile">
+                <div class="deck-card-back"></div>
+                <div class="deck-card-back deck-card-back-2"></div>
+              </div>
+              <div class="deck-count-badge" id="deck-count-text">0</div>
             </div>
           </div>
         </div>
@@ -186,6 +270,13 @@
       </div>
       <div class="opponents-area" id="opponents-area"></div>
       <div class="table-area" id="table-area">
+        <div id="training-hint" class="training-hint" style="display:none;">
+          <div class="hint-content">
+            <h4 data-i18n="hint_title">Hint</h4>
+            <p id="hint-advice"></p>
+            <small id="hint-explanation"></small>
+          </div>
+        </div>
         <div class="table-cards" id="table-cards"></div>
         <div class="table-actions" id="table-actions" style="display:none;">
           <button class="btn-take" id="btn-take" data-i18n="take">Take</button>
@@ -195,6 +286,7 @@
       <div class="player-info">
         <div class="player-avatar-small" id="game-player-avatar"></div>
         <span class="player-name-small" id="game-player-name"></span>
+        <button class="btn-hint" id="btn-hint" style="display:none;" data-i18n="get_hint">Hint</button>
       </div>
     </div>
 
