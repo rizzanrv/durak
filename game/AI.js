@@ -182,8 +182,8 @@ class AIPlayer {
 
     if (!lastAttackCard) {
       return {
-        advice: 'All attacks are defended. Wait for attacker\'s decision.',
-        explanation: 'You have successfully defended all attacking cards.'
+        advice: 'Все атаки отбиты. Ждите решения атакующего.',
+        explanation: 'Вы успешно отбили все атакующие карты.'
       };
     }
 
@@ -191,21 +191,20 @@ class AIPlayer {
     
     if (beatable.length === 0) {
       return {
-        advice: 'Take the cards - you have no cards to defend.',
-        explanation: `The attack card is ${lastAttackCard.rank} of ${lastAttackCard.suit}. You need a higher card of the same suit or a trump card.`,
+        advice: 'Возьмите карты — вам нечем отбиться.',
+        explanation: `Атакующая карта: ${lastAttackCard.rank} ${lastAttackCard.suit}. Нужна карта той же масти выше или козырь.`,
         action: 'take'
       };
     }
 
-    // Анализ ситуации
     const totalCards = attacks.length;
     const handSize = player.hand.length;
     const nonTrumpDefense = beatable.filter(c => c.suit !== this.game.trump);
     
     if (totalCards > 4 && handSize < 5) {
       return {
-        advice: 'Consider taking the cards - too many attacks and you have few cards.',
-        explanation: `There are ${totalCards} attack cards and you only have ${handSize} cards in hand. Taking might be better than using all your cards.`,
+        advice: 'Лучше возьмите — слишком много атак, а у вас мало карт.',
+        explanation: `На столе ${totalCards} атакующих карт, а у вас только ${handSize}. Взять лучше, чем тратить все карты.`,
         action: 'take',
         bestCard: null
       };
@@ -214,11 +213,15 @@ class AIPlayer {
     beatable.sort((a, b) => a.value - b.value);
     const bestCard = nonTrumpDefense.length > 0 ? nonTrumpDefense[0] : beatable[0];
     
+    const suitNames = { hearts: 'чирва', diamonds: 'бубны', clubs: 'трефы', spades: 'пики' };
+    const rankNames = { '6': 'шестёрка', '7': 'семёрка', '8': 'восьмёрка', '9': 'девятка', '10': 'десятка', 'J': 'валет', 'Q': 'дама', 'K': 'король', 'A': 'туз' };
+    const cardName = (c) => `${rankNames[c.rank] || c.rank} ${suitNames[c.suit] || c.suit}`;
+
     return {
-      advice: `Defend with ${bestCard.rank} of ${bestCard.suit}.`,
+      advice: `Отбейтесь: ${cardName(bestCard)}.`,
       explanation: nonTrumpDefense.length > 0 
-        ? `Use the weakest non-trump card (${bestCard.rank} ${bestCard.suit}) to save your trumps for later.`
-        : `Use your weakest trump (${bestCard.rank} ${bestCard.suit}) since you have no other options.`,
+        ? `Используйте слабую некозырную карту (${cardName(bestCard)}), чтобы сохранить козыри.`
+        : `Используйте слабый козырь (${cardName(bestCard)}), другого варианта нет.`,
       action: 'defend',
       bestCard: bestCard,
       attackCard: lastAttackCard
@@ -229,32 +232,33 @@ class AIPlayer {
     const tableAttacks = this.game.table.filter(t => t.type === 'attack');
     const defenderHand = this.game.players[this.game.defender]?.hand?.length || 6;
 
-    // Первая атака
+    const suitNames = { hearts: 'чирва', diamonds: 'бубны', clubs: 'трефы', spades: 'пики' };
+    const rankNames = { '6': 'шестёрка', '7': 'семёрка', '8': 'восьмёрка', '9': 'девятка', '10': 'десятка', 'J': 'валет', 'Q': 'дама', 'K': 'король', 'A': 'туз' };
+    const cardName = (c) => `${rankNames[c.rank] || c.rank} ${suitNames[c.suit] || c.suit}`;
+
     if (tableAttacks.length === 0) {
       const sorted = [...player.hand].sort((a, b) => a.value - b.value);
       const nonTrump = sorted.filter(c => c.suit !== this.game.trump);
       const bestCard = nonTrump.length > 0 ? nonTrump[0] : sorted[0];
       
       return {
-        advice: `Attack with ${bestCard.rank} of ${bestCard.suit}.`,
+        advice: `Атакуйте: ${cardName(bestCard)}.`,
         explanation: nonTrump.length > 0
-          ? `Start with your weakest non-trump card (${bestCard.rank} ${bestCard.suit}) to test the defender and save strong cards.`
-          : `Attack with your weakest card (${bestCard.rank} ${bestCard.suit}) since you only have trumps.`,
+          ? `Начните со слабой некозырной карты (${cardName(bestCard)}), чтобы проверить защиту и сохранить сильные карты.`
+          : `Атакуйте слабой картой (${cardName(bestCard)}), других вариантов нет.`,
         action: 'attack',
         bestCard: bestCard
       };
     }
 
-    // Проверка можно ли ещё подкидывать
     if (tableAttacks.length >= defenderHand) {
       return {
-        advice: 'Pass - defender has no more cards.',
-        explanation: `The defender only has ${defenderHand} cards, and there are already ${tableAttacks.length} attacks. No point in adding more.`,
+        advice: 'Пас — у защищающегося больше нет карт.',
+        explanation: `У защищающегося ${defenderHand} карт, а атак уже ${tableAttacks.length}. Подкидывать больше смысла нет.`,
         action: 'pass'
       };
     }
 
-    // Найти подходящие карты
     const ranks = tableAttacks.map(t => t.card.rank);
     const tableCards = this.game.table.map(t => t.card);
     const playable = player.hand.filter(c => 
@@ -263,8 +267,8 @@ class AIPlayer {
 
     if (playable.length === 0) {
       return {
-        advice: 'Pass - you have no matching rank cards.',
-        explanation: `You can only add cards with ranks: ${[...new Set(ranks)].join(', ')}. You don't have any.`,
+        advice: 'Пас — у вас нет карт нужного достоинства.',
+        explanation: `Можно подкинуть только: ${[...new Set(ranks)].join(', ')}. У вас таких нет.`,
         action: 'pass'
       };
     }
@@ -274,10 +278,10 @@ class AIPlayer {
     const bestCard = nonTrump.length > 0 ? nonTrump[0] : playable[0];
 
     return {
-      advice: `Add ${bestCard.rank} of ${bestCard.suit} to the attack.`,
+      advice: `Подкиньте: ${cardName(bestCard)}.`,
       explanation: nonTrump.length > 0
-        ? `Use your weakest matching non-trump card (${bestCard.rank} ${bestCard.suit}) to pressure the defender while saving trumps.`
-        : `Use your weakest matching trump (${bestCard.rank} ${bestCard.suit}) since you have no other matching cards.`,
+        ? `Используйте слабую некозырную карту (${cardName(bestCard)}), чтобы надавить на защиту, сохранив козыри.`
+        : `Используйте слабый козырь (${cardName(bestCard)}), других подходящих карт нет.`,
       action: 'attack',
       bestCard: bestCard
     };
