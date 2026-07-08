@@ -92,8 +92,21 @@
     socket.on('room_updated', r => updateLobby(r));
     socket.on('rooms_updated', r => updateRoomList(r));
     socket.on('game_started', s => { gameState = s; enterGame(s); });
-    socket.on('game_state', s => { gameState = s; updateGame(s); });
-    socket.on('game_over', d => showGameOver(d));
+    socket.on('game_state', s => {
+      const prevState = gameState;
+      gameState = s;
+      if (prevState && prevState.table.length > s.table.length && s.table.length === 0) {
+        if (typeof Animations !== 'undefined') {
+          Animations.animateNewRound(() => updateGame(s));
+          return;
+        }
+      }
+      updateGame(s);
+    });
+    socket.on('game_over', d => {
+      if (typeof Animations !== 'undefined') Animations.createConfetti(60);
+      showGameOver(d);
+    });
     socket.on('error', d => showToast(d.message));
     socket.on('game_invite', d => showInviteModal(d));
     socket.on('online_users', u => updateOnlineStatus(u));
@@ -317,7 +330,6 @@
     selectedCard = null; 
     setupDragDrop(); 
     
-    // Показываем кнопку подсказки в режиме обучения
     if (state.settings && state.settings.isTraining) {
       $('#btn-hint').style.display = 'inline-block';
       $('#btn-hint').onclick = () => socket.emit('get_hint');
@@ -325,7 +337,14 @@
       $('#btn-hint').style.display = 'none';
     }
     
-    updateGame(state); 
+    if (typeof Animations !== 'undefined') {
+      Animations.showShuffleAnimation(2000).then(() => {
+        updateGame(state);
+        Animations.createConfetti(15);
+      });
+    } else {
+      updateGame(state);
+    }
   }
 
   function setupDragDrop() {
@@ -373,6 +392,16 @@
       td.className = `trump-display ${state.trump}`;
       const badgeSuit = $('#trump-badge-suit');
       if (badgeSuit) badgeSuit.textContent = sym;
+    }
+
+    const trumpFace = $('#trump-card-face');
+    if (trumpFace && state.faceUpTrump && state.deckCount > 0) {
+      trumpFace.style.display = 'flex';
+      trumpFace.className = `trump-card-face ${state.trump}`;
+      $('#trump-card-rank').textContent = state.faceUpTrump.rank;
+      $('#trump-card-suit').textContent = SUIT_SYMBOLS[state.trump];
+    } else if (trumpFace) {
+      trumpFace.style.display = 'none';
     }
 
     $('#deck-count-text').textContent = state.deckCount;
@@ -436,6 +465,7 @@
       const d = document.createElement('div'); d.className = 'opponent-card';
       if (state.attacker === i) d.classList.add('active-turn');
       if (state.defender === i) d.classList.add('is-defender');
+      d.style.animation = 'cardAppear 0.3s ease-out';
       const role = state.attacker === i ? 'ATK' : state.defender === i ? 'DEF' : '';
       const roleColor = state.attacker === i ? 'var(--accent)' : state.defender === i ? 'var(--red)' : 'var(--text-muted)';
       d.innerHTML = `<div class="friend-avatar" style="background:${String(p.id).startsWith('ai_')?'#E17055':'#6C5CE7'};width:32px;height:32px;margin:0 auto 2px;font-size:12px;">${p.username[0].toUpperCase()}</div><div class="opponent-name">${p.username}</div><div style="font-size:9px;font-weight:700;color:${roleColor};margin-bottom:2px;">${role}</div><div class="opponent-cards"><span class="card-count-icon">${SUIT_SYMBOLS[state.trump] || '?'}</span> <span class="card-count-num">${p.handCount}</span></div>`;
