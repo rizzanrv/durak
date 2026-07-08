@@ -204,8 +204,8 @@ class GameRoom {
       this.defender = this.getNextPlayer(this.attacker);
     }
 
-    this.throwInProgress = true;
-    this.throwInBy = this.attacker;
+    this.throwInProgress = this.players.length > 2;
+    this.throwInBy = this.throwInProgress ? this.attacker : null;
     return this.getState();
   }
 
