@@ -638,11 +638,6 @@ body::before {
 .game-over-content p { color: var(--text-secondary); margin-bottom: 20px; }
 
 /* TOAST */
-.toast-container { position: fixed; top: calc(16px + var(--safe-top)); left: 50%; transform: translateX(-50%); z-index: 200; display: flex; flex-direction: column; gap: 6px; width: 90%; max-width: 380px; }
-.toast { padding: 10px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; animation: slideIn 0.3s ease; box-shadow: var(--shadow); }
-.toast.error { border-color: var(--red); background: var(--red-dim); color: var(--red); }
-.toast.success { border-color: var(--green); background: var(--green-dim); color: var(--green); }
-@keyframes slideIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
 
 /* GAME MENU */
 .game-menu-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
@@ -2365,18 +2360,18 @@ body::before {
   
   /* Game Screen */
   .game-header {
-    padding: 12px 16px;
+    padding: 8px 12px;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
   }
   
   .game-info {
-    gap: 12px;
+    gap: 8px;
   }
   
   .trump-display {
-    padding: 8px 12px;
-    font-size: 13px;
+    padding: 5px 10px;
+    font-size: 12px;
   }
   
   .game-mode-label {
@@ -2384,95 +2379,95 @@ body::before {
     transform: none;
     width: 100%;
     text-align: center;
-    font-size: 12px;
-    padding: 6px 12px;
-    margin-top: 4px;
+    font-size: 11px;
+    padding: 4px 10px;
+    margin-top: 2px;
   }
   
   /* Opponents */
   .opponents-area {
-    padding: 16px 12px;
-    gap: 8px;
+    padding: 8px 10px;
+    gap: 6px;
   }
   
   .opponent-card {
-    padding: 10px 14px;
-    min-width: 90px;
+    padding: 6px 10px;
+    min-width: 70px;
   }
   
   .opponent-name {
-    font-size: 13px;
+    font-size: 11px;
   }
   
   .opponent-cards {
-    font-size: 11px;
+    font-size: 10px;
   }
   
   /* Table Area */
   .table-area {
-    padding: 16px;
-    min-height: 200px;
+    padding: 10px;
+    min-height: 140px;
   }
   
   .table-cards {
-    gap: 12px;
-    padding: 12px;
+    gap: 8px;
+    padding: 8px;
   }
   
   /* Cards - Larger for touch */
   .card {
-    width: 64px;
-    height: 92px;
-    padding: 6px;
-  }
-  
-  .card-rank {
-    font-size: 14px;
-  }
-  
-  .card-suit-small {
-    font-size: 12px;
-  }
-  
-  .card-center {
-    font-size: 28px;
-  }
-  
-  .card-small {
-    width: 54px;
-    height: 78px;
+    width: 60px;
+    height: 86px;
     padding: 5px;
   }
   
+  .card-rank {
+    font-size: 13px;
+  }
+  
+  .card-suit-small {
+    font-size: 11px;
+  }
+  
+  .card-center {
+    font-size: 26px;
+  }
+  
+  .card-small {
+    width: 50px;
+    height: 72px;
+    padding: 4px;
+  }
+  
   .card-small .card-rank {
-    font-size: 12px;
+    font-size: 11px;
   }
   
   .card-small .card-suit-small {
-    font-size: 10px;
+    font-size: 9px;
   }
   
   .card-small .card-center {
-    font-size: 22px;
+    font-size: 20px;
   }
   
   /* Player Hand */
   .player-hand {
-    gap: 8px;
-    padding: 16px 12px;
-    padding-bottom: calc(16px + var(--safe-bottom) + 70px);
+    gap: 6px;
+    padding: 10px 8px;
+    padding-bottom: calc(10px + var(--safe-bottom) + 55px);
   }
   
   /* Actions */
   .table-actions {
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
     width: 100%;
-    padding: 0 16px;
+    padding: 0 12px;
   }
   
   .btn-take {
-    padding: 12px 24px;
+    padding: 10px 20px;
     font-size: 15px;
     width: 100%;
   }
@@ -2575,77 +2570,81 @@ body::before {
   /* Modals */
   .modal,
   .invite-overlay {
-    padding: 16px;
+    padding: 12px;
   }
   
   .modal-content,
   .invite-modal {
-    padding: 24px 20px;
-    max-height: 85vh;
+    padding: 20px 16px;
+    max-height: 80vh;
   }
   
   .modal-content h2,
   .invite-modal h3 {
-    font-size: 22px;
-    margin-bottom: 20px;
-  }
-  
-  .setting-group {
+    font-size: 20px;
     margin-bottom: 16px;
   }
   
+  .setting-group {
+    margin-bottom: 14px;
+  }
+  
   .setting-group label {
-    font-size: 13px;
+    font-size: 12px;
   }
   
   .setting-group select,
   .setting-group input {
-    padding: 12px 14px;
-    font-size: 15px;
+    padding: 10px 12px;
+    font-size: 14px;
   }
   
   /* Toast */
   .toast-container {
     top: auto;
-    bottom: calc(80px + var(--safe-bottom));
-    right: 16px;
-    left: 16px;
+    bottom: calc(100px + var(--safe-bottom));
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: 360px;
   }
   
   .toast {
-    padding: 14px 16px;
-    font-size: 14px;
+    padding: 12px 16px;
+    font-size: 13px;
     max-width: 100%;
+    border-radius: var(--radius-sm);
   }
   
   /* Training Hint */
   .training-hint {
-    top: 12px;
-    left: 12px;
-    right: 12px;
+    top: 8px;
+    left: 8px;
+    right: 8px;
     transform: none;
-    max-width: calc(100% - 24px);
-    padding: 14px 16px;
+    max-width: calc(100% - 16px);
+    padding: 10px 12px;
   }
   
   .hint-content h4 {
-    font-size: 13px;
+    font-size: 12px;
   }
   
   .hint-content p {
-    font-size: 14px;
+    font-size: 13px;
   }
   
   .hint-content small {
-    font-size: 12px;
+    font-size: 11px;
   }
   
   /* Hint Button */
   .btn-hint {
-    bottom: calc(16px + var(--safe-bottom) + 70px);
+    bottom: calc(16px + var(--safe-bottom) + 55px);
     right: 16px;
-    padding: 12px 18px;
-    font-size: 13px;
+    padding: 10px 16px;
+    font-size: 12px;
   }
   
   /* Game Menu */
@@ -3270,7 +3269,11 @@ body::before {
   .toast-container {
     bottom: auto;
     top: 10px;
-    right: 10px;
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80%;
+    max-width: 320px;
   }
 }
 
