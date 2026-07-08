@@ -1,0 +1,602 @@
+(() => {
+  const SUIT_SYMBOLS = { hearts: '\u2665', diamonds: '\u2666', clubs: '\u2663', spades: '\u2660' };
+
+  let currentUser = null, socket = null, currentRoom = null;
+  let selectedCard = null, gameState = null, myHand = [];
+  let i18nData = {}, currentLang = localStorage.getItem('lang') || 'en';
+  let dragCard = null;
+
+  const $ = s => document.querySelector(s);
+  const $$ = s => document.querySelectorAll(s);
+
+  async function loadI18n() { try { i18nData = await (await fetch('/i18n.json')).json(); } catch(e) { i18nData = {}; } }
+  function t(k, p) { let s = i18nData[currentLang]?.[k] || i18nData['en']?.[k] || k; if(p) Object.entries(p).forEach(([k,v]) => s = s.replace(`{${k}}`, v)); return s; }
+  function applyI18n() {
+    $$('[data-i18n]').forEach(el => el.textContent = t(el.dataset.i18n));
+    $$('[data-i18n-placeholder]').forEach(el => el.placeholder = t(el.dataset.i18nPlaceholder));
+    const lb = $('#btn-lang'); if(lb) lb.textContent = t('lang_switch');
+    document.documentElement.lang = currentLang === 'ru' ? 'ru' : 'en';
+  }
+  function switchLang() { currentLang = currentLang === 'en' ? 'ru' : 'en'; localStorage.setItem('lang', currentLang); applyI18n(); }
+
+  function showScreen(id) { $$('.screen').forEach(s => s.classList.remove('active')); $(`#${id}`).classList.add('active'); }
+  function showToast(msg, type='error') { const c = $('#toast-container'); const t = document.createElement('div'); t.className = `toast ${type}`; t.textContent = msg; c.appendChild(t); setTimeout(() => t.remove(), 3000); }
+
+  function api(method, path, body) {
+    const token = localStorage.getItem('token');
+    const opts = { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } };
+    if (body) opts.body = JSON.stringify(body);
+    return fetch(`/api${path}`, opts).then(r => r.json());
+  }
+
+  function initAuth() {
+    $('#show-register').onclick = e => { e.preventDefault(); $('#login-form').classList.remove('active'); $('#register-form').classList.add('active'); };
+    $('#show-login').onclick = e => { e.preventDefault(); $('#register-form').classList.remove('active'); $('#login-form').classList.add('active'); };
+    $('#btn-login').onclick = async () => {
+      const login = $('#login-login').value.trim(), password = $('#login-password').value;
+      if (!login || !password) return showToast(t('fill_fields'));
+      const d = await api('POST', '/auth/login', { login, password });
+      if (d.error) return showToast(d.error);
+      localStorage.setItem('token', d.token); currentUser = d.user; enterApp();
+    };
+    $('#btn-register').onclick = async () => {
+      const username = $('#reg-username').value.trim(), email = $('#reg-email').value.trim(), password = $('#reg-password').value;
+      if (!username || !email || !password) return showToast(t('fill_fields'));
+      const d = await api('POST', '/auth/register', { username, email, password });
+      if (d.error) return showToast(d.error);
+      localStorage.setItem('token', d.token); currentUser = d.user; enterApp();
+    };
+    ['#login-login','#login-password'].forEach(s => $(s).onkeydown = e => { if(e.key==='Enter') $('#btn-login').click(); });
+    ['#reg-username','#reg-email','#reg-password'].forEach(s => $(s).onkeydown = e => { if(e.key==='Enter') $('#btn-register').click(); });
+  }
+
+  async function checkSession() {
+    const token = localStorage.getItem('token');
+    if (!token) return false;
+    try { const d = await api('GET', '/auth/me'); if (d.user) { currentUser = d.user; return true; } } catch(e) {}
+    localStorage.removeItem('token'); return false;
+  }
+
+  function enterApp() { showScreen('main-screen'); updateUserUI(); initNavigation(); initFriends(); connectSocket(); loadRooms(); }
+
+  function updateUserUI() {
+    if (!currentUser) return;
+    const c = currentUser.avatarColor || '#6C5CE7', i = currentUser.username[0].toUpperCase();
+    $('#header-avatar').textContent = i; $('#header-avatar').style.background = c;
+    $('#header-username').textContent = currentUser.username;
+    $('#header-rating').textContent = `${currentUser.rating} ${t('rating')}`;
+    $('#profile-avatar').textContent = i; $('#profile-avatar').style.background = c;
+    $('#profile-username').textContent = currentUser.username;
+    $('#stat-rating').textContent = currentUser.rating;
+    $('#stat-games').textContent = currentUser.gamesPlayed;
+    $('#stat-wins').textContent = currentUser.gamesWon;
+  }
+
+  function initNavigation() {
+    $$('.nav-item').forEach(btn => btn.onclick = () => {
+      $$('.nav-item').forEach(b => b.classList.remove('active')); btn.classList.add('active');
+      $$('.tab-panel').forEach(p => p.classList.remove('active')); $(`#tab-${btn.dataset.tab}`).classList.add('active');
+      if (btn.dataset.tab === 'friends') loadFriends();
+    });
+    $('#btn-logout').onclick = async () => { await api('POST', '/auth/logout'); localStorage.removeItem('token'); currentUser = null; if(socket) socket.disconnect(); showScreen('auth-screen'); };
+    $('#btn-settings').onclick = () => { $$('.nav-item').forEach(b => b.classList.remove('active')); $$('.tab-panel').forEach(p => p.classList.remove('active')); $$('.nav-item')[3].classList.add('active'); $('#tab-profile').classList.add('active'); };
+  }
+
+  function connectSocket() {
+    socket = io({ transports: ['websocket', 'polling'] });
+    const token = localStorage.getItem('token');
+    socket.emit('authenticate', token);
+    socket.on('connect', () => socket.emit('authenticate', token));
+    socket.on('room_created', r => { currentRoom = r.id; showLobby(r); });
+    socket.on('room_joined', r => { currentRoom = r.id; showLobby(r); });
+    socket.on('room_updated', r => updateLobby(r));
+    socket.on('rooms_updated', r => updateRoomList(r));
+    socket.on('game_started', s => { gameState = s; enterGame(s); });
+    socket.on('game_state', s => { gameState = s; updateGame(s); });
+    socket.on('game_over', d => showGameOver(d));
+    socket.on('error', d => showToast(d.message));
+    socket.on('game_invite', d => showInviteModal(d));
+    socket.on('online_users', u => updateOnlineStatus(u));
+  }
+
+  function showInviteModal(data) {
+    const modal = $('#invite-modal');
+    modal.style.display = 'flex';
+    $('#invite-message').textContent = `${data.from} invites you to a game`;
+    $('#btn-invite-accept').onclick = () => { modal.style.display = 'none'; socket.emit('join_room', { roomId: data.roomId }); };
+    $('#btn-invite-reject').onclick = () => { modal.style.display = 'none'; };
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try { new Notification('Durak', { body: `${data.from} invites you to a game`, icon: '/img/icon-192.svg', tag: 'invite' }); } catch(e) {}
+    }
+  }
+
+  function initGameModes() {
+    $$('.mode-card').forEach(card => card.onclick = () => {
+      const mode = card.dataset.mode;
+      if (mode === 'vs_ai') {
+        socket.emit('create_room', { mode: 'classic', isPrivate: false });
+        setTimeout(() => { socket.emit('add_ai'); setTimeout(() => socket.emit('player_ready'), 500); }, 500);
+      } else if (mode === 'custom') {
+        showRoomList();
+      } else {
+        socket.emit('create_room', { mode, isPrivate: false });
+      }
+    });
+    $('#btn-back-lobby').onclick = () => { socket.emit('leave_room'); $('#lobby-view').style.display = 'none'; currentRoom = null; };
+    $('#btn-ready').onclick = () => { socket.emit('player_ready'); $('#btn-ready').disabled = true; $('#btn-ready').textContent = t('ready_bang'); };
+    $('#btn-add-ai').onclick = () => socket.emit('add_ai');
+    $('#btn-start').onclick = () => socket.emit('start_game');
+    $('#btn-invite-friend').onclick = showInviteFriendsModal;
+    $('#btn-close-invite').onclick = () => { $('#invite-friends-modal').style.display = 'none'; };
+  }
+
+  function showInviteFriendsModal() {
+    const modal = $('#invite-friends-modal');
+    const list = $('#invite-friends-list');
+    list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px;">Loading friends...</div>';
+    modal.style.display = 'flex';
+    api('GET', '/friends').then(d => {
+      list.innerHTML = '';
+      if (!d.friends || d.friends.length === 0) { list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px;">No friends to invite</div>'; return; }
+      d.friends.forEach(f => {
+        const div = document.createElement('div');
+        div.className = 'friend-item';
+        div.innerHTML = `
+          <div class="friend-avatar" style="background:${f.avatar_color}">${f.username[0].toUpperCase()}</div>
+          <div class="friend-info"><div class="friend-name">${f.username}</div></div>
+          <button class="btn-invite" data-user="${f.username}">${t('invite')}</button>
+        `;
+        list.appendChild(div);
+      });
+      list.querySelectorAll('.btn-invite').forEach(btn => btn.onclick = () => {
+        socket.emit('invite_friend', { friendId: btn.dataset.user });
+        showToast(t('inv_sent'), 'success');
+        btn.textContent = t('sent'); btn.disabled = true;
+      });
+    });
+  }
+
+  function showLobby(room) {
+    const l = $('#lobby-view'); l.style.display = 'flex'; l.style.position = 'fixed'; l.style.inset = '0';
+    const mn = { classic: t('classic'), transfer: t('transfer'), custom: t('custom') };
+    $('#lobby-title').textContent = mn[room.mode] || room.mode;
+    updateLobby(room);
+  }
+
+  function updateLobby(room) {
+    const c = $('#lobby-players'); c.innerHTML = '';
+    const h = document.createElement('div'); h.className = 'friend-section-title';
+    h.textContent = `${t('players')} (${room.players.length}/${room.maxPlayers})`; c.appendChild(h);
+    room.players.forEach(p => {
+      const d = document.createElement('div'); d.className = `lobby-player ${p.isReady ? 'ready' : ''}`;
+      d.innerHTML = `<div class="friend-avatar" style="background:${String(p.id).startsWith('ai_')?'#E17055':'#6C5CE7'};width:36px;height:36px;font-size:13px;">${p.username[0].toUpperCase()}</div><span class="lobby-player-name">${p.username}${p.id===currentUser.id?' (You)':''}</span>${p.isReady?`<span class="lobby-player-status">${t('ready_bang')}</span>`:`<span style="color:var(--text-muted);font-size:11px;">${t('not_ready')}</span>`}`;
+      c.appendChild(d);
+    });
+    if (room.players.length < room.maxPlayers) { const e = document.createElement('div'); e.className = 'lobby-player'; e.innerHTML = `<span style="color:var(--text-muted);font-size:13px;">${t('waiting')}</span>`; c.appendChild(e); }
+    $('#btn-start').style.display = (room.players.some(p => p.id === currentUser.id) && room.players.length >= 2) ? 'block' : 'none';
+  }
+
+  function showRoomList() { $('#room-list').style.display = 'block'; loadRooms(); }
+  async function loadRooms() { try { const d = await api('GET', '/rooms'); updateRoomList(d.rooms || []); } catch(e) {} }
+  function updateRoomList(rooms) {
+    const c = $('#rooms-container'); c.innerHTML = '';
+    if (!rooms.length) { c.innerHTML = `<div class="empty-state"><p>${t('no_open_rooms')}</p></div>`; return; }
+    rooms.forEach(r => { const d = document.createElement('div'); d.className = 'room-card'; d.innerHTML = `<div class="room-info"><h4>${r.mode}</h4><p>${new Date(r.createdAt).toLocaleTimeString()}</p></div><span class="room-players-count">${r.players.length}/${r.maxPlayers}</span>`; d.onclick = () => socket.emit('join_room', { roomId: r.id }); c.appendChild(d); });
+  }
+
+  function enterGame(state) { showScreen('game-screen'); selectedCard = null; setupDragDrop(); updateGame(state); }
+
+  function setupDragDrop() {
+    const tableArea = $('#table-area');
+    tableArea.ondragover = e => { e.preventDefault(); tableArea.classList.add('drag-over'); };
+    tableArea.ondragleave = () => tableArea.classList.remove('drag-over');
+    tableArea.ondrop = e => {
+      e.preventDefault();
+      tableArea.classList.remove('drag-over');
+      if (dragCard) { playCard(dragCard); dragCard = null; }
+    };
+    tableArea.ontouchmove = () => {};
+    tableArea.ontouchend = () => {};
+  }
+
+  function updateGame(state) {
+    const mp = state.players.find(p => p.id === currentUser.id);
+    myHand = mp ? mp.hand : [];
+
+    const td = $('#trump-display');
+    if (state.trump) {
+      const sym = SUIT_SYMBOLS[state.trump];
+      td.innerHTML = `<span style="font-size:18px;">${sym}</span> <span style="font-size:13px;font-weight:700;">${state.trump.toUpperCase()}</span>`;
+      td.className = `trump-display ${state.trump}`;
+    }
+
+    $('#deck-count-text').textContent = state.deckCount;
+    const modeNames = { classic: 'Classic', transfer: 'Transfer' };
+    $('#game-mode-label').textContent = modeNames[state.mode] || state.mode;
+
+    updateOpponents(state);
+    updateTable(state);
+    updateHand(state);
+    updateTurnIndicator(state);
+
+    if (mp) {
+      const c = currentUser.avatarColor||'#6C5CE7';
+      $('#game-player-avatar').textContent = currentUser.username[0].toUpperCase();
+      $('#game-player-avatar').style.background = c;
+      $('#game-player-name').textContent = `${currentUser.username} (${mp.handCount})`;
+    }
+    updateActions(state);
+  }
+
+  function updateTurnIndicator(state) {
+    const mp = state.players.find(p => p.id === currentUser.id);
+    const myIdx = state.players.indexOf(mp);
+    const isAttacker = state.attacker === myIdx;
+    const isDefender = state.defender === myIdx;
+    const attackerName = state.players[state.attacker]?.username || '?';
+    const defenderName = state.players[state.defender]?.username || '?';
+
+    let hint = '';
+    if (isAttacker && state.isAttackerTurn) {
+      hint = state.table.length > 0 ? 'Your turn - add a card or pass' : 'Your turn - play a card';
+    } else if (isDefender && state.isDefenderTurn) {
+      hint = 'Defend - play a higher card or take';
+    } else {
+      hint = `${attackerName} attacks ${defenderName}`;
+    }
+
+    const existing = document.getElementById('turn-hint');
+    if (existing) existing.remove();
+    const el = document.createElement('div');
+    el.id = 'turn-hint';
+    el.style.cssText = 'text-align:center;font-size:12px;color:var(--text-secondary);padding:4px 8px;';
+    if (isAttacker && state.isAttackerTurn) el.style.color = 'var(--accent)';
+    if (isDefender && state.isDefenderTurn) el.style.color = 'var(--red)';
+    el.textContent = hint;
+    const ta = $('#table-area');
+    if (ta && ta.firstChild) ta.insertBefore(el, ta.firstChild);
+  }
+
+  function updateOpponents(state) {
+    const c = $('#opponents-area'); c.innerHTML = '';
+    state.players.forEach((p, i) => {
+      if (p.id === currentUser.id) return;
+      const d = document.createElement('div'); d.className = 'opponent-card';
+      if (state.attacker === i) d.classList.add('active-turn');
+      if (state.defender === i) d.classList.add('is-defender');
+      const role = state.attacker === i ? 'ATK' : state.defender === i ? 'DEF' : '';
+      const roleColor = state.attacker === i ? 'var(--accent)' : state.defender === i ? 'var(--red)' : 'var(--text-muted)';
+      d.innerHTML = `<div class="friend-avatar" style="background:${String(p.id).startsWith('ai_')?'#E17055':'#6C5CE7'};width:32px;height:32px;margin:0 auto 2px;font-size:12px;">${p.username[0].toUpperCase()}</div><div class="opponent-name">${p.username}</div><div style="font-size:9px;font-weight:700;color:${roleColor};margin-bottom:2px;">${role}</div><div class="opponent-cards">${p.handCount} cards</div>`;
+      c.appendChild(d);
+    });
+  }
+
+  function updateTable(state) {
+    const c = $('#table-cards'); c.innerHTML = '';
+    const pairs = []; let ca = null;
+    state.table.forEach(e => { if(e.type==='attack') ca=e; else if(e.type==='defense'&&ca) { pairs.push({attack:ca,defense:e}); ca=null; } });
+    if (ca) pairs.push({attack:ca,defense:null});
+    pairs.forEach(p => {
+      const pd = document.createElement('div'); pd.className = 'table-pair';
+      const atkCard = createCardEl(p.attack.card,false,true);
+      atkCard.style.position = 'relative';
+      pd.appendChild(atkCard);
+      if(p.defense) {
+        const defCard = createCardEl(p.defense.card,false,true);
+        defCard.style.position = 'relative';
+        defCard.style.marginTop = '-20px';
+        pd.appendChild(defCard);
+      }
+      c.appendChild(pd);
+    });
+    if (!state.table.length) { const h = document.createElement('div'); h.className = 'table-hint'; h.textContent = t('table_empty'); c.appendChild(h); }
+  }
+
+  function updateHand(state) {
+    const c = $('#player-hand'); c.innerHTML = '';
+    const mp = state.players.find(p => p.id === currentUser.id);
+    if (!mp) return;
+    const myIdx = state.players.indexOf(mp);
+    const isAttacker = state.attacker === myIdx;
+    const isDefender = state.defender === myIdx;
+    
+    myHand.forEach(card => {
+      const el = createCardEl(card, true);
+      if (selectedCard && selectedCard.suit===card.suit && selectedCard.rank===card.rank) el.classList.add('selected');
+      
+      // Визуально показываем валидные карты
+      let isPlayable = false;
+      if (isDefender && state.isDefenderTurn) {
+        const attacks = state.table.filter(t => t.type === 'attack');
+        const defenses = state.table.filter(t => t.type === 'defense');
+        for (const atk of attacks) {
+          const hasDefense = defenses.some(def => 
+            def.beats && def.beats.suit === atk.card.suit && def.beats.rank === atk.card.rank
+          );
+          if (!hasDefense && canBeatCard(card, atk.card, state.trump)) {
+            isPlayable = true;
+            break;
+          }
+        }
+      } else if (isAttacker && state.isAttackerTurn) {
+        if (state.table.length === 0) {
+          isPlayable = true;
+        } else {
+          const tableRanks = new Set(state.table.map(t => t.card.rank));
+          isPlayable = tableRanks.has(card.rank);
+        }
+      }
+      
+      if (isPlayable) {
+        el.style.cursor = 'pointer';
+        el.style.border = '2px solid rgba(var(--accent-rgb, 108, 92, 231), 0.5)';
+      } else if ((isAttacker && state.isAttackerTurn) || (isDefender && state.isDefenderTurn)) {
+        el.style.opacity = '0.5';
+        el.style.cursor = 'not-allowed';
+      }
+      
+      el.onclick = () => playCard(card);
+      el.ondragstart = e => { dragCard = card; el.classList.add('dragging'); e.dataTransfer.setData('text/plain', card.rank+card.suit); };
+      el.ondragend = () => { el.classList.remove('dragging'); dragCard = null; };
+      let touchStartY = 0, touchStartX = 0, cloned = null;
+      el.ontouchstart = e => { touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; };
+      el.ontouchmove = e => {
+        const dy = e.touches[0].clientY - touchStartY;
+        const dx = e.touches[0].clientX - touchStartX;
+        if (Math.abs(dy) > 30 && !cloned) {
+          cloned = el.cloneNode(true);
+          cloned.style.position = 'fixed';
+          cloned.style.pointerEvents = 'none';
+          cloned.style.zIndex = '9999';
+          cloned.style.opacity = '0.9';
+          cloned.style.transform = 'scale(1.1)';
+          document.body.appendChild(cloned);
+          el.style.opacity = '0.3';
+        }
+        if (cloned) {
+          cloned.style.left = (e.touches[0].clientX - 36) + 'px';
+          cloned.style.top = (e.touches[0].clientY - 54) + 'px';
+        }
+        e.preventDefault();
+      };
+      el.ontouchend = e => {
+        if (cloned) {
+          cloned.remove(); el.style.opacity = '1';
+          const touch = e.changedTouches[0];
+          const tableRect = $('#table-area').getBoundingClientRect();
+          if (touch.clientY < tableRect.bottom && touch.clientY > tableRect.top - 50) {
+            playCard(card);
+          }
+        }
+        cloned = null;
+      };
+      c.appendChild(el);
+    });
+  }
+
+  function updateActions(state) {
+    const a = $('#table-actions');
+    const mp = state.players.find(p => p.id === currentUser.id);
+    if (!mp) return;
+    const myIdx = state.players.indexOf(mp);
+    const isAttacker = state.attacker === myIdx;
+    const isDefender = state.defender === myIdx;
+
+    a.innerHTML = '';
+    if (isDefender && state.isDefenderTurn) {
+      const btn = document.createElement('button');
+      btn.className = 'btn-take'; btn.textContent = t('take');
+      btn.onclick = () => { socket.emit('take_cards'); selectedCard = null; };
+      a.appendChild(btn);
+    } else if (isAttacker && state.isAttackerTurn && state.table.length > 0) {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-secondary'; btn.textContent = 'Pass';
+      btn.style.cssText = 'width:auto;padding:10px 28px;font-size:14px;';
+      btn.onclick = () => { socket.emit('end_round'); selectedCard = null; };
+      a.appendChild(btn);
+    }
+    a.style.display = a.children.length > 0 ? 'flex' : 'none';
+  }
+
+  function createCardEl(card, interactive=false, small=false) {
+    const d = document.createElement('div');
+    const cls = [small?'card-small':'card', card.suit];
+    if (card.suit === gameState?.trump) cls.push('trump');
+    d.className = cls.join(' ');
+    d.innerHTML = `<div class="card-corner"><span class="card-rank">${card.rank}</span><span class="card-suit-small">${SUIT_SYMBOLS[card.suit]}</span></div><div class="card-center">${SUIT_SYMBOLS[card.suit]}</div><div class="card-corner" style="align-self:flex-end;"><span class="card-suit-small">${SUIT_SYMBOLS[card.suit]}</span><span class="card-rank">${card.rank}</span></div>`;
+    return d;
+  }
+
+  function playCard(card) {
+    if (!gameState) return;
+    const mp = gameState.players.find(p => p.id === currentUser.id);
+    if (!mp) return;
+    const myIdx = gameState.players.indexOf(mp);
+    
+    // Защита
+    if (gameState.defender === myIdx && gameState.isDefenderTurn) {
+      const attacks = gameState.table.filter(t => t.type === 'attack');
+      const defenses = gameState.table.filter(t => t.type === 'defense');
+      
+      // Найти первую незащищённую атаку
+      let attackToDefend = null;
+      for (const atk of attacks) {
+        const hasDefense = defenses.some(def => 
+          def.beats && def.beats.suit === atk.card.suit && def.beats.rank === atk.card.rank
+        );
+        if (!hasDefense) {
+          attackToDefend = atk.card;
+          break;
+        }
+      }
+      
+      if (!attackToDefend) {
+        showToast('All attacks are defended', 'error');
+        return;
+      }
+      
+      // Проверка что картой можно бить
+      if (!canBeatCard(card, attackToDefend, gameState.trump)) {
+        showToast('This card cannot beat the attack', 'error');
+        return;
+      }
+      
+      socket.emit('defend', { attackCard: attackToDefend, defenseCard: card });
+      selectedCard = null;
+    } 
+    // Атака
+    else if (gameState.attacker === myIdx && gameState.isAttackerTurn) {
+      // Проверка что карту можно подкинуть
+      if (gameState.table.length > 0) {
+        const tableRanks = new Set(gameState.table.map(t => t.card.rank));
+        if (!tableRanks.has(card.rank)) {
+          showToast('Can only add cards matching table ranks', 'error');
+          return;
+        }
+      }
+      
+      socket.emit('attack', { card });
+      selectedCard = null;
+    } else {
+      showToast('Not your turn', 'error');
+    }
+  }
+
+  // Вспомогательная функция проверки битья карты
+  function canBeatCard(card, target, trump) {
+    if (card.suit === target.suit) {
+      const rankValues = { '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14 };
+      return rankValues[card.rank] > rankValues[target.rank];
+    }
+    if (card.suit === trump && target.suit !== trump) {
+      return true;
+    }
+    return false;
+  }
+
+  function initGameActions() {
+    $('#btn-take').onclick = () => { socket.emit('take_cards'); selectedCard = null; };
+    $('#btn-game-menu').onclick = showGameMenu;
+  }
+
+  function showGameMenu() {
+    const o = document.createElement('div'); o.className = 'game-menu-overlay';
+    o.innerHTML = `<div class="game-menu"><h3>${t('game_menu')}</h3><button class="game-menu-item" id="menu-resume"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>${t('resume')}</button><button class="game-menu-item danger" id="menu-quit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>${t('quit_game')}</button></div>`;
+    document.body.appendChild(o);
+    o.onclick = e => { if(e.target===o) o.remove(); };
+    o.querySelector('#menu-resume').onclick = () => o.remove();
+    o.querySelector('#menu-quit').onclick = () => { o.remove(); socket.emit('leave_room'); currentRoom=null; gameState=null; showScreen('main-screen'); };
+  }
+
+  function showGameOver(data) {
+    const m = $('#game-over-modal'); m.style.display = 'flex';
+    const w = data.winner===currentUser.id, d = data.durak===currentUser.id;
+    $('#game-over-icon').innerHTML = w ? '<svg width="56" height="56" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="28" stroke="#00B894" stroke-width="3"/><path d="M20 32l8 8 16-16" stroke="#00B894" stroke-width="3" fill="none"/></svg>' : '<svg width="56" height="56" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="28" stroke="#E17055" stroke-width="3"/><path d="M22 22l20 20M42 22l-20 20" stroke="#E17055" stroke-width="3"/></svg>';
+    $('#game-over-title').textContent = w ? t('victory') : d ? t('durak_title') : t('defeat');
+    $('#game-over-title').style.color = w ? 'var(--green)' : 'var(--red)';
+    $('#game-over-message').textContent = d ? t('you_durak') : w ? t('congrats') : t('better_luck');
+    $('#btn-play-again').onclick = () => { m.style.display='none'; showScreen('main-screen'); };
+    $('#btn-to-lobby').onclick = () => { m.style.display='none'; showScreen('main-screen'); };
+  }
+
+  // FRIENDS
+  async function loadFriends() {
+    try {
+      const d = await api('GET', '/friends');
+      renderReceived(d.received || []);
+      renderSent(d.sent || []);
+      renderFriendsList(d.friends || []);
+    } catch(e) {}
+  }
+
+  function renderReceived(list) {
+    const c = $('#friend-received'); c.innerHTML = '';
+    if (!list.length) return;
+    const h = document.createElement('div'); h.className = 'friend-section-title';
+    h.textContent = `${t('friend_requests')} (${list.length})`; c.appendChild(h);
+    list.forEach(f => {
+      const d = document.createElement('div'); d.className = 'friend-item';
+      d.innerHTML = `<div class="friend-avatar" style="background:${f.avatar_color}">${f.username[0].toUpperCase()}</div><div class="friend-info"><div class="friend-name">${f.username}</div><div class="friend-rating">${f.rating} ${t('rating')}</div></div><div class="friend-actions"><button class="btn-accept" data-id="${f.id}">${t('accept')}</button><button class="btn-reject" data-id="${f.id}">${t('reject')}</button></div>`;
+      c.appendChild(d);
+    });
+    c.querySelectorAll('.btn-accept').forEach(b => b.onclick = async () => { await api('POST', '/friends/accept', { userId: parseInt(b.dataset.id) }); loadFriends(); });
+    c.querySelectorAll('.btn-reject').forEach(b => b.onclick = async () => { await api('POST', '/friends/reject', { userId: parseInt(b.dataset.id) }); loadFriends(); });
+  }
+
+  function renderSent(list) {
+    const c = $('#friend-sent'); c.innerHTML = '';
+    if (!list.length) return;
+    const h = document.createElement('div'); h.className = 'friend-section-title';
+    h.textContent = `${t('sent')} (${list.length})`; c.appendChild(h);
+    list.forEach(f => {
+      const d = document.createElement('div'); d.className = 'friend-item';
+      d.innerHTML = `<div class="friend-avatar" style="background:${f.avatar_color}">${f.username[0].toUpperCase()}</div><div class="friend-info"><div class="friend-name">${f.username}</div><div class="friend-rating">${f.rating} ${t('rating')}</div></div><div class="friend-actions"><button class="btn-sent">${t('sent')}</button></div>`;
+      c.appendChild(d);
+    });
+  }
+
+  function renderFriendsList(list) {
+    const c = $('#friends-list'); c.innerHTML = '';
+    const h = document.createElement('div'); h.className = 'friend-section-title';
+    h.textContent = `${t('friends_list')} (${list.length})`; c.appendChild(h);
+    if (!list.length) { c.innerHTML += `<div class="empty-state"><p>${t('no_friends')}</p></div>`; return; }
+    list.forEach(f => {
+      const d = document.createElement('div'); d.className = 'friend-item';
+      const isOnline = onlineUsers.some(u => u.username === f.username);
+      d.innerHTML = `<div class="friend-avatar" style="background:${f.avatar_color}">${f.username[0].toUpperCase()}${isOnline?'<div class="online-dot"></div>':''}</div><div class="friend-info"><div class="friend-name">${f.username}</div><div class="friend-rating">${f.rating} ${t('rating')}</div></div><div class="friend-actions">${currentRoom?`<button class="btn-invite" data-friend="${f.username}">${t('invite')}</button>`:''}<button class="btn-remove" data-id="${f.id}">${t('remove')}</button></div>`;
+      c.appendChild(d);
+    });
+    c.querySelectorAll('.btn-invite').forEach(b => b.onclick = () => { socket.emit('invite_friend', { friendId: b.dataset.friend }); showToast(t('inv_sent'), 'success'); });
+    c.querySelectorAll('.btn-remove').forEach(b => b.onclick = async () => { await api('DELETE', `/friends/${b.dataset.id}`); loadFriends(); });
+  }
+
+  let onlineUsers = [];
+  function updateOnlineStatus(u) { onlineUsers = u; loadFriends(); }
+
+  async function handleSearch(e) {
+    const q = e.target.value.trim(), c = $('#search-results');
+    if (q.length < 2) { c.innerHTML = ''; return; }
+    try {
+      const d = await api('GET', `/friends/search?q=${encodeURIComponent(q)}`);
+      c.innerHTML = '';
+      const h = document.createElement('div'); h.className = 'friend-section-title'; h.textContent = t('search_results'); c.appendChild(h);
+      if (!d.users.length) { c.innerHTML += `<div class="empty-state"><p>${t('no_players')}</p></div>`; return; }
+      d.users.forEach(u => {
+        const div = document.createElement('div'); div.className = 'friend-item';
+        let btnHtml = '';
+        if (u.friendship === 'accepted') btnHtml = `<button class="btn-already">${t('friends_list')}</button>`;
+        else if (u.friendship === 'pending') btnHtml = `<button class="btn-sent">${t('sent')}</button>`;
+        else btnHtml = `<button class="btn-invite" data-username="${u.username}">${t('add')}</button>`;
+        div.innerHTML = `<div class="friend-avatar" style="background:${u.avatar_color}">${u.username[0].toUpperCase()}</div><div class="friend-info"><div class="friend-name">${u.username}</div><div class="friend-rating">${u.rating} ${t('rating')}</div></div><div class="friend-actions">${btnHtml}</div>`;
+        c.appendChild(div);
+      });
+      c.querySelectorAll('.btn-invite[data-username]').forEach(b => b.onclick = async () => {
+        const r = await api('POST', '/friends/request', { username: b.dataset.username });
+        if (r.error) return showToast(r.error);
+        showToast(t('request_sent'), 'success'); b.textContent = t('sent'); b.className = 'btn-sent';
+      });
+    } catch(e) {}
+  }
+
+  async function initFriends() {
+    $('#friend-search').addEventListener('input', debounce(handleSearch, 300));
+    loadFriends();
+  }
+
+  async function loadHistory() { $('#history-list').innerHTML = `<div class="empty-state"><p>Game history will appear here</p></div>`; }
+
+  function debounce(fn, ms) { let t; return function(...a) { clearTimeout(t); t = setTimeout(() => fn.apply(this,a), ms); }; }
+
+  async function init() {
+    await loadI18n(); applyI18n();
+    if ('Notification' in window && Notification.permission === 'default') { Notification.requestPermission(); }
+    $('#btn-lang').onclick = switchLang;
+    initAuth(); initGameModes(); initGameActions();
+    $('#friend-search').addEventListener('input', debounce(handleSearch, 300));
+    if (await checkSession()) enterApp(); else showScreen('auth-screen');
+    setTimeout(() => { const s = $('#splash-screen'); s.style.opacity='0'; s.style.transition='opacity 0.5s ease'; setTimeout(()=>{s.classList.remove('active');s.style.display='none';},500); }, 2000);
+  }
+
+  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js').catch(()=>{}); }
+  document.addEventListener('DOMContentLoaded', init);
+})();

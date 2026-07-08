@@ -1,0 +1,22 @@
+{
+  "name": "durak-online",
+  "version": "1.0.0",
+  "description": "Durak card game - online multiplayer PWA",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.9.8",
+    "socket.io": "^4.7.4",
+    "sql.js": "^1.10.3",
+    "uuid": "^9.0.0"
+  }
+}

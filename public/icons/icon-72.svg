@@ -1,0 +1,36 @@
+<svg width="72" height="72" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0f0f1e;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFD700;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FFA500;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="72" height="72" fill="url(#bg)" rx="10.799999999999999"/>
+  
+  <!-- Cards -->
+  <g transform="translate(14.4, 18)">
+    <!-- Back card -->
+    <rect x="0" y="7.2" width="25.2" height="36" 
+          fill="#000000" stroke="url(#gold)" stroke-width="1.44" rx="2.16"/>
+    
+    <!-- Front card -->
+    <rect x="18" y="0" width="25.2" height="36" 
+          fill="#000000" stroke="url(#gold)" stroke-width="1.44" rx="2.16"/>
+    
+    <!-- Card symbol (spade) -->
+    <text x="30.599999999999998" y="21.599999999999998" 
+          font-size="10.799999999999999" fill="#FFFFFF" 
+          font-family="Arial" text-anchor="middle">♠</text>
+    
+    <!-- Card rank (A) -->
+    <text x="21.599999999999998" y="10.799999999999999" 
+          font-size="5.76" fill="#FFFFFF" 
+          font-family="Arial" font-weight="bold">A</text>
+  </g>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#0a0a0f"/>
+  <rect x="112" y="64" width="160" height="240" rx="20" fill="#1a1a2e" stroke="#6C5CE7" stroke-width="6"/>
+  <rect x="148" y="64" width="160" height="240" rx="20" fill="#16162a" stroke="#6C5CE7" stroke-width="6"/>
+  <text x="228" y="210" text-anchor="middle" fill="#6C5CE7" font-size="120" font-weight="900" font-family="Arial, sans-serif">D</text>
+  <text x="256" y="420" text-anchor="middle" fill="#6C5CE7" font-size="36" font-weight="600" font-family="Arial, sans-serif" letter-spacing="8">DURAK</text>
+</svg>
