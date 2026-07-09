@@ -256,6 +256,10 @@
 
   function showGameSettingsForFriend(friendName) {
     currentModeSettings = { mode: 'classic', vsAI: false, isTraining: false, withFriend: friendName };
+    $$('.nav-item').forEach(b => b.classList.remove('active'));
+    $$('.tab-panel').forEach(p => p.classList.remove('active'));
+    $$('.nav-item')[0].classList.add('active');
+    $('#tab-play').classList.add('active');
     showGameSettings(currentModeSettings);
   }
 
