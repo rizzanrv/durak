@@ -81,6 +81,24 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('reconnect_game', ({ roomId }) => {
+    if (!currentUser) return;
+    const room = rooms.get(roomId);
+    if (!room || room.state !== 'playing') {
+      socket.emit('reconnect_fail');
+      return;
+    }
+    const playerInRoom = room.players.find(p => p.id === currentUser.id);
+    if (!playerInRoom) {
+      socket.emit('reconnect_fail');
+      return;
+    }
+    userRooms.set(currentUser.id, roomId);
+    socket.join(roomId);
+    socket.emit('reconnect_success', room.getState());
+    socket.emit('game_state', room.getState());
+  });
+
   socket.on('create_room', ({ mode, settings }) => {
     if (!currentUser) return;
     const roomId = 'r_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);

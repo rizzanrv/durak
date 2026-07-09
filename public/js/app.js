@@ -86,9 +86,25 @@
     socket = io({ transports: ['websocket', 'polling'] });
     const token = localStorage.getItem('token');
     socket.emit('authenticate', token);
-    socket.on('connect', () => socket.emit('authenticate', token));
-    socket.on('room_created', r => { currentRoom = r.id; showLobby(r); });
-    socket.on('room_joined', r => { currentRoom = r.id; showLobby(r); });
+    socket.on('connect', () => {
+      socket.emit('authenticate', token);
+      const savedRoom = localStorage.getItem('currentRoom');
+      const savedGame = localStorage.getItem('gameState');
+      if (savedRoom && savedGame && token) {
+        socket.emit('reconnect_game', { roomId: savedRoom });
+      }
+    });
+    socket.on('reconnect_success', s => {
+      gameState = s;
+      currentRoom = localStorage.getItem('currentRoom');
+      enterGame(s);
+    });
+    socket.on('reconnect_fail', () => {
+      localStorage.removeItem('currentRoom');
+      localStorage.removeItem('gameState');
+    });
+    socket.on('room_created', r => { currentRoom = r.id; localStorage.setItem('currentRoom', r.id); showLobby(r); });
+    socket.on('room_joined', r => { currentRoom = r.id; localStorage.setItem('currentRoom', r.id); showLobby(r); });
     socket.on('room_updated', r => updateLobby(r));
     socket.on('rooms_updated', r => updateRoomList(r));
     socket.on('game_started', s => { gameState = s; enterGame(s); });
@@ -329,6 +345,7 @@
     showScreen('game-screen'); 
     selectedCard = null; 
     setupDragDrop(); 
+    localStorage.setItem('gameState', JSON.stringify({ state: 'playing' }));
     
     if (state.settings && state.settings.isTraining) {
       $('#btn-hint').style.display = 'inline-block';
@@ -515,9 +532,9 @@
     const sortedHand = sortHand(myHand, state.trump);
     const handCount = sortedHand.length;
     c.classList.remove('overlap', 'tight', 'ultra');
-    if (handCount > 10) c.classList.add('ultra');
-    else if (handCount > 8) c.classList.add('tight');
-    else if (handCount > 6) c.classList.add('overlap');
+    if (handCount > 12) c.classList.add('ultra');
+    else if (handCount > 10) c.classList.add('tight');
+    else if (handCount > 8) c.classList.add('overlap');
 
     sortedHand.forEach(card => {
       const el = createCardEl(card, true);
@@ -580,7 +597,7 @@
         touchStartY = e.touches[0].clientY; 
         touchStartTime = Date.now();
         hasMoved = false;
-        el.classList.add('touch-active');
+        cloned = null;
       };
       
       el.ontouchmove = e => {
@@ -588,21 +605,22 @@
         const dx = e.touches[0].clientX - touchStartX;
         const distance = Math.sqrt(dx * dx + dy * dy);
         
-        if (distance > 10) {
+        if (distance > 15 && !cloned) {
           hasMoved = true;
         }
         
-        if (Math.abs(dy) > 40 && !cloned) {
+        if (Math.abs(dy) > 30 && !cloned) {
+          hasMoved = true;
           cloned = el.cloneNode(true);
           cloned.style.position = 'fixed';
           cloned.style.pointerEvents = 'none';
           cloned.style.zIndex = '9999';
-          cloned.style.opacity = '0.95';
-          cloned.style.transform = 'scale(1.15) rotate(5deg)';
-          cloned.style.boxShadow = '0 20px 60px rgba(0, 0, 0, 0.6)';
+          cloned.style.opacity = '0.9';
+          cloned.style.transform = 'scale(1.1)';
+          cloned.style.boxShadow = '0 16px 40px rgba(0,0,0,0.5)';
           document.body.appendChild(cloned);
-          el.style.opacity = '0.4';
-          navigator.vibrate?.(50); // Haptic feedback
+          el.style.opacity = '0.3';
+          navigator.vibrate?.(30);
         }
         
         if (cloned) {
@@ -615,22 +633,18 @@
       
       el.ontouchend = e => {
         el.classList.remove('touch-active');
-        const touchDuration = Date.now() - touchStartTime;
+        el.style.opacity = '1';
         
         if (cloned) {
           cloned.remove(); 
-          el.style.opacity = '1';
           const touch = e.changedTouches[0];
           const tableRect = $('#table-area').getBoundingClientRect();
           
-          if (touch.clientY < tableRect.bottom && touch.clientY > tableRect.top - 50) {
+          if (touch.clientY < tableRect.bottom + 20) {
             playCard(card);
-            navigator.vibrate?.(100); // Success haptic
-          } else {
-            navigator.vibrate?.(30); // Cancel haptic
+            navigator.vibrate?.(50);
           }
-        } else if (!hasMoved && touchDuration < 300) {
-          // Quick tap - play card directly
+        } else {
           playCard(card);
         }
         
@@ -743,6 +757,12 @@
     if (!mp) return;
     const myIdx = gameState.players.indexOf(mp);
 
+    const hasCard = mp.hand.some(c => c.suit === card.suit && c.rank === card.rank);
+    if (!hasCard) {
+      showToast(t('no_card'), 'error');
+      return;
+    }
+
     if (gameState.throwInProgress && gameState.throwInBy === myIdx && myIdx !== gameState.defender) {
       const tableRanks = new Set(gameState.table.map(t => t.card.rank));
       if (tableRanks.size > 0 && !tableRanks.has(card.rank)) {
@@ -836,6 +856,8 @@
   }
 
   function showGameOver(data) {
+    localStorage.removeItem('currentRoom');
+    localStorage.removeItem('gameState');
     const m = $('#game-over-modal'); m.style.display = 'flex';
     const w = data.winner===currentUser.id, d = data.durak===currentUser.id;
     $('#game-over-icon').innerHTML = w ? '<svg width="56" height="56" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="28" stroke="#00B894" stroke-width="3"/><path d="M20 32l8 8 16-16" stroke="#00B894" stroke-width="3" fill="none"/></svg>' : '<svg width="56" height="56" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="28" stroke="#E17055" stroke-width="3"/><path d="M22 22l20 20M42 22l-20 20" stroke="#E17055" stroke-width="3"/></svg>';

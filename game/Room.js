@@ -159,6 +159,22 @@ class GameRoom {
     this.table.push({ card, type: 'attack', by: userId });
     this.resetTurnTimer();
 
+    if (player.hand.length === 0 && this.deck.length === 0) {
+      const othersWithCards = this.players.filter(p => p.hand.length > 0);
+      if (othersWithCards.length === 1) {
+        this.state = 'finished';
+        return {
+          gameOver: true,
+          winner: userId,
+          durak: othersWithCards[0].id,
+          gameState: this.getState()
+        };
+      } else if (othersWithCards.length === 0) {
+        this.state = 'finished';
+        return { gameOver: true, winner: null, durak: null, gameState: this.getState() };
+      }
+    }
+
     return this.getState();
   }
 
@@ -180,6 +196,18 @@ class GameRoom {
 
     this.removeCardFromHand(userId, defenseCard);
     this.table.push({ card: defenseCard, type: 'defense', by: userId, beats: attackCard });
+
+    if (player.hand.length === 0 && this.deck.length === 0) {
+      const allDefended = this.table.filter(t => t.type === 'attack').length === 
+                          this.table.filter(t => t.type === 'defense').length;
+      if (allDefended) {
+        const othersWithCards = this.players.filter(p => p.hand.length > 0);
+        if (othersWithCards.length === 0) {
+          this.state = 'finished';
+          return { gameOver: true, winner: null, durak: null, gameState: this.getState() };
+        }
+      }
+    }
 
     return this.getState();
   }
@@ -275,6 +303,17 @@ class GameRoom {
     if (this.players[this.attacker]?.hand.length === 0) {
       this.attacker = this.getNextPlayer(this.attacker);
       this.defender = this.getNextPlayer(this.attacker);
+    }
+
+    const playersWithCards = this.players.filter(p => p.hand.length > 0);
+    if (playersWithCards.length <= 1 && this.deck.length === 0) {
+      this.state = 'finished';
+      const durak = playersWithCards.length === 1 ? playersWithCards[0] : null;
+      let winner = null;
+      if (durak) {
+        winner = this.players.find(p => p.hand.length === 0 && p.id !== durak.id);
+      }
+      return { gameOver: true, winner: winner?.id || null, durak: durak?.id || null, gameState: this.getState() };
     }
 
     return this.getState();
