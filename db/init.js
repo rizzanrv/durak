@@ -29,6 +29,8 @@ async function initDb() {
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       avatar_color TEXT DEFAULT '#6C5CE7',
+      avatar_emoji TEXT DEFAULT '😎',
+      bio TEXT DEFAULT '',
       rating INTEGER DEFAULT 1000,
       games_played INTEGER DEFAULT 0,
       games_won INTEGER DEFAULT 0,
@@ -36,6 +38,9 @@ async function initDb() {
       last_seen TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  try { db.run(`ALTER TABLE users ADD COLUMN avatar_emoji TEXT DEFAULT '😎'`); } catch(e) {}
+  try { db.run(`ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''`); } catch(e) {}
 
   db.run(`
     CREATE TABLE IF NOT EXISTS sessions (

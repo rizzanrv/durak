@@ -231,8 +231,11 @@
 
         <div id="tab-profile" class="tab-panel">
           <div class="profile-card">
-            <div class="profile-avatar" id="profile-avatar"></div>
+            <div class="profile-avatar" id="profile-avatar" style="cursor:pointer;" onclick="document.getElementById('avatar-picker').style.display=document.getElementById('avatar-picker').style.display==='none'?'flex':'none'"></div>
+            <div id="avatar-picker" style="display:none;flex-wrap:wrap;gap:8px;justify-content:center;margin:12px 0;padding:12px;background:var(--bg-secondary);border-radius:var(--radius-sm);"></div>
             <h2 id="profile-username"></h2>
+            <input type="text" id="profile-bio" placeholder="О себе..." style="width:100%;padding:10px 14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:14px;font-family:inherit;margin:12px 0;text-align:center;outline:none;">
+            <button class="btn btn-primary" id="btn-save-profile" style="margin-bottom:16px;" data-i18n="save">Save</button>
             <div class="profile-stats">
               <div class="stat"><span class="stat-value" id="stat-rating">0</span><span class="stat-label" data-i18n="rating">Rating</span></div>
               <div class="stat"><span class="stat-value" id="stat-games">0</span><span class="stat-label" data-i18n="games">Games</span></div>
@@ -326,6 +329,7 @@
     <div id="toast-container" class="toast-container"></div>
   </div>
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/sound.js"></script>
   <script src="/js/animations.js"></script>
   <script src="/js/app.js"></script>
 </body>

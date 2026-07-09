@@ -20,7 +20,12 @@
   function switchLang() { currentLang = currentLang === 'en' ? 'ru' : 'en'; localStorage.setItem('lang', currentLang); applyI18n(); }
 
   function showScreen(id) { $$('.screen').forEach(s => s.classList.remove('active')); $(`#${id}`).classList.add('active'); }
-  function showToast(msg, type='error') { const c = $('#toast-container'); const t = document.createElement('div'); t.className = `toast ${type}`; t.textContent = msg; c.appendChild(t); setTimeout(() => t.remove(), 3000); }
+  function showToast(msg, type='error') { 
+    const c = $('#toast-container'); const t = document.createElement('div'); 
+    t.className = `toast ${type}`; t.textContent = msg; c.appendChild(t); 
+    if (type === 'error') Sound.play('error');
+    setTimeout(() => t.remove(), 3000); 
+  }
 
   function api(method, path, body) {
     const token = localStorage.getItem('token');
@@ -61,15 +66,36 @@
 
   function updateUserUI() {
     if (!currentUser) return;
-    const c = currentUser.avatarColor || '#6C5CE7', i = currentUser.username[0].toUpperCase();
-    $('#header-avatar').textContent = i; $('#header-avatar').style.background = c;
+    const c = currentUser.avatarColor || '#6C5CE7';
+    const emoji = currentUser.avatarEmoji || '😎';
+    $('#header-avatar').textContent = emoji; $('#header-avatar').style.background = c;
     $('#header-username').textContent = currentUser.username;
     $('#header-rating').textContent = `${currentUser.rating} ${t('rating')}`;
-    $('#profile-avatar').textContent = i; $('#profile-avatar').style.background = c;
+    $('#profile-avatar').textContent = emoji; $('#profile-avatar').style.background = c;
     $('#profile-username').textContent = currentUser.username;
+    $('#profile-bio').value = currentUser.bio || '';
     $('#stat-rating').textContent = currentUser.rating;
     $('#stat-games').textContent = currentUser.gamesPlayed;
     $('#stat-wins').textContent = currentUser.gamesWon;
+
+    const emojis = ['😎','🃏','♠️','♥️','♦️','♣️','🏆','👑','🎯','🔥','💀','🤖','🐱','🐶','🦊','🐼','🦁','🐸','🎮','🎲','🃏','👑','💎','🌟'];
+    const picker = $('#avatar-picker');
+    if (picker && !picker.dataset.init) {
+      picker.dataset.init = '1';
+      emojis.forEach(e => {
+        const btn = document.createElement('button');
+        btn.textContent = e;
+        btn.style.cssText = 'width:36px;height:36px;font-size:20px;border:2px solid var(--border);border-radius:8px;background:var(--bg-tertiary);cursor:pointer;display:flex;align-items:center;justify-content:center;';
+        btn.onclick = () => { currentUser.avatarEmoji = e; $('#profile-avatar').textContent = e; picker.style.display = 'none'; };
+        picker.appendChild(btn);
+      });
+    }
+
+    $('#btn-save-profile').onclick = async () => {
+      const bio = $('#profile-bio').value.trim();
+      const d = await api('PUT', '/auth/profile', { avatar_emoji: currentUser.avatarEmoji, bio });
+      if (d.user) { currentUser = d.user; updateUserUI(); showToast(t('save'), 'success'); }
+    };
   }
 
   function initNavigation() {
@@ -507,8 +533,14 @@
       d.style.animation = 'cardAppear 0.3s ease-out';
       const role = state.attacker === i ? 'ATK' : state.defender === i ? 'DEF' : '';
       const roleColor = state.attacker === i ? 'var(--accent)' : state.defender === i ? 'var(--red)' : 'var(--text-muted)';
-      d.innerHTML = `<div class="friend-avatar" style="background:${String(p.id).startsWith('ai_')?'#E17055':'#6C5CE7'};width:32px;height:32px;margin:0 auto 2px;font-size:12px;">${p.username[0].toUpperCase()}</div><div class="opponent-name">${p.username}</div><div style="font-size:9px;font-weight:700;color:${roleColor};margin-bottom:2px;">${role}</div><div class="opponent-cards"><span class="card-count-icon">${SUIT_SYMBOLS[state.trump] || '?'}</span> <span class="card-count-num">${p.handCount}</span></div>`;
+      const emoji = p.avatarEmoji || '😎';
+      const color = String(p.id).startsWith('ai_') ? '#E17055' : (p.avatarColor || '#6C5CE7');
+      d.innerHTML = `<div class="friend-avatar" style="background:${color};width:36px;height:36px;margin:0 auto 2px;font-size:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;" data-user-id="${p.id}">${emoji}</div><div class="opponent-name">${p.username}</div><div style="font-size:9px;font-weight:700;color:${roleColor};margin-bottom:2px;">${role}</div><div class="opponent-cards"><span class="card-count-icon">${SUIT_SYMBOLS[state.trump] || '?'}</span> <span class="card-count-num">${p.handCount}</span></div>`;
       c.appendChild(d);
+      const avatarEl = d.querySelector('.friend-avatar');
+      if (avatarEl && !String(p.id).startsWith('ai_')) {
+        avatarEl.onclick = () => showUserProfile(p.id);
+      }
     });
   }
 
@@ -700,7 +732,7 @@
       // Кнопка "Взять"
       const takeBtn = document.createElement('button');
       takeBtn.className = 'btn-take'; takeBtn.textContent = t('take');
-      takeBtn.onclick = () => { socket.emit('take_cards'); selectedCard = null; };
+      takeBtn.onclick = () => { socket.emit('take_cards'); selectedCard = null; Sound.play('take_cards'); };
       a.appendChild(takeBtn);
       
       // Кнопка "Перевести" для переводного дурака
@@ -723,7 +755,7 @@
       const btn = document.createElement('button');
       btn.className = 'btn btn-secondary'; btn.textContent = t('pass');
       btn.style.cssText = 'width:auto;padding:10px 28px;font-size:14px;';
-      btn.onclick = () => { socket.emit('end_round'); selectedCard = null; };
+      btn.onclick = () => { socket.emit('end_round'); selectedCard = null; Sound.play('pass'); };
       a.appendChild(btn);
     }
 
@@ -793,6 +825,7 @@
       }
       socket.emit('throw_in', { card });
       selectedCard = null;
+      Sound.play('card_play');
       return;
     }
     
@@ -826,6 +859,7 @@
       
       socket.emit('defend', { attackCard: attackToDefend, defenseCard: card });
       selectedCard = null;
+      Sound.play('card_defend');
     } 
     // Атака
     else if (gameState.attacker === myIdx && gameState.isAttackerTurn) {
@@ -840,6 +874,7 @@
       
       socket.emit('attack', { card });
       selectedCard = null;
+      Sound.play('card_play');
     } else {
       // Если защищающийся, но не его ход - сохраняем выбор для кнопки "Перевести"
       if (gameState.defender === myIdx && gameState.settings && gameState.settings.gameType === 'perevodnoy') {
@@ -870,11 +905,50 @@
 
   function showGameMenu() {
     const o = document.createElement('div'); o.className = 'game-menu-overlay';
-    o.innerHTML = `<div class="game-menu"><h3>${t('game_menu')}</h3><button class="game-menu-item" id="menu-resume"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>${t('resume')}</button><button class="game-menu-item danger" id="menu-quit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>${t('quit_game')}</button></div>`;
+    const soundOn = Sound.isEnabled();
+    const hapticOn = Sound.isHapticEnabled();
+    o.innerHTML = `<div class="game-menu"><h3>${t('game_menu')}</h3><button class="game-menu-item" id="menu-resume"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>${t('resume')}</button><button class="game-menu-item" id="menu-sound"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>${t('sound')}: ${soundOn ? 'ON' : 'OFF'}</button><button class="game-menu-item" id="menu-haptic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg>${t('haptic')}: ${hapticOn ? 'ON' : 'OFF'}</button><button class="game-menu-item danger" id="menu-quit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>${t('quit_game')}</button></div>`;
     document.body.appendChild(o);
     o.onclick = e => { if(e.target===o) o.remove(); };
     o.querySelector('#menu-resume').onclick = () => o.remove();
+    o.querySelector('#menu-sound').onclick = () => {
+      const on = Sound.toggle();
+      o.querySelector('#menu-sound').innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>${t('sound')}: ${on ? 'ON' : 'OFF'}`;
+      if (on) Sound.play('button');
+    };
+    o.querySelector('#menu-haptic').onclick = () => {
+      const on = Sound.toggleHaptic();
+      o.querySelector('#menu-haptic').innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg>${t('haptic')}: ${on ? 'ON' : 'OFF'}`;
+      if (on) Sound.haptic(30);
+    };
     o.querySelector('#menu-quit').onclick = () => { o.remove(); socket.emit('leave_room'); currentRoom=null; gameState=null; showScreen('main-screen'); };
+  }
+
+  async function showUserProfile(userId) {
+    try {
+      const d = await api('GET', `/auth/profile/${userId}`);
+      if (d.error) return showToast(d.error, 'error');
+      const u = d.user;
+      const m = document.createElement('div');
+      m.className = 'modal';
+      m.style.zIndex = '10001';
+      const winRate = u.gamesPlayed > 0 ? Math.round(u.gamesWon / u.gamesPlayed * 100) : 0;
+      m.innerHTML = `<div class="modal-content" style="max-width:320px;">
+        <div style="text-align:center;margin-bottom:20px;">
+          <div style="width:72px;height:72px;border-radius:50%;background:${u.avatarColor};display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 12px;box-shadow:0 4px 16px rgba(0,0,0,0.3);">${u.avatarEmoji}</div>
+          <h2 style="font-size:20px;font-weight:800;margin-bottom:4px;">${u.username}</h2>
+          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">${u.bio || ''}</p>
+        </div>
+        <div style="display:flex;justify-content:space-around;margin-bottom:20px;padding:16px;background:var(--bg-secondary);border-radius:var(--radius-sm);">
+          <div style="text-align:center;"><div style="font-size:22px;font-weight:800;color:var(--yellow);">${u.rating}</div><div style="font-size:11px;color:var(--text-muted);">${t('rating')}</div></div>
+          <div style="text-align:center;"><div style="font-size:22px;font-weight:800;color:var(--accent);">${u.gamesPlayed}</div><div style="font-size:11px;color:var(--text-muted);">${t('games')}</div></div>
+          <div style="text-align:center;"><div style="font-size:22px;font-weight:800;color:var(--green);">${winRate}%</div><div style="font-size:11px;color:var(--text-muted);">Winrate</div></div>
+        </div>
+        <button class="btn btn-secondary" onclick="this.closest('.modal').remove()" style="width:100%;">${t('resume')}</button>
+      </div>`;
+      m.onclick = e => { if(e.target === m) m.remove(); };
+      document.body.appendChild(m);
+    } catch(e) {}
   }
 
   function showGameOver(data) {
@@ -882,6 +956,7 @@
     localStorage.removeItem('gameState');
     const m = $('#game-over-modal'); m.style.display = 'flex';
     const w = data.winner===currentUser.id, d = data.durak===currentUser.id;
+    if (w) Sound.play('win'); else Sound.play('lose');
     $('#game-over-icon').innerHTML = w ? '<svg width="56" height="56" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="28" stroke="#00B894" stroke-width="3"/><path d="M20 32l8 8 16-16" stroke="#00B894" stroke-width="3" fill="none"/></svg>' : '<svg width="56" height="56" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="28" stroke="#E17055" stroke-width="3"/><path d="M22 22l20 20M42 22l-20 20" stroke="#E17055" stroke-width="3"/></svg>';
     $('#game-over-title').textContent = w ? t('victory') : d ? t('durak_title') : t('defeat');
     $('#game-over-title').style.color = w ? 'var(--green)' : 'var(--red)';

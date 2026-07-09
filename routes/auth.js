@@ -160,9 +160,39 @@ router.get('/me', authMiddleware, (req, res) => {
       username: req.user.username,
       email: req.user.email,
       avatarColor: req.user.avatar_color,
+      avatarEmoji: req.user.avatar_emoji || '😎',
+      bio: req.user.bio || '',
       rating: req.user.rating,
       gamesPlayed: req.user.games_played,
       gamesWon: req.user.games_won
+    }
+  });
+});
+
+router.put('/profile', authMiddleware, (req, res) => {
+  const { avatar_emoji, bio, avatar_color } = req.body;
+  if (avatar_emoji) run('UPDATE users SET avatar_emoji = ? WHERE id = ?', [avatar_emoji, req.user.id]);
+  if (bio !== undefined) run('UPDATE users SET bio = ? WHERE id = ?', [bio, req.user.id]);
+  if (avatar_color) run('UPDATE users SET avatar_color = ? WHERE id = ?', [avatar_color, req.user.id]);
+  const user = queryOne('SELECT * FROM users WHERE id = ?', [req.user.id]);
+  res.json({
+    user: {
+      id: user.id, username: user.username, avatarColor: user.avatar_color,
+      avatarEmoji: user.avatar_emoji || '😎', bio: user.bio || '',
+      rating: user.rating, gamesPlayed: user.games_played, gamesWon: user.games_won
+    }
+  });
+});
+
+router.get('/profile/:userId', (req, res) => {
+  const user = queryOne('SELECT id, username, avatar_color, avatar_emoji, bio, rating, games_played, games_won, created_at FROM users WHERE id = ?', [req.params.userId]);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json({
+    user: {
+      id: user.id, username: user.username, avatarColor: user.avatar_color,
+      avatarEmoji: user.avatar_emoji || '😎', bio: user.bio || '',
+      rating: user.rating, gamesPlayed: user.games_played, gamesWon: user.games_won,
+      createdAt: user.created_at
     }
   });
 });
