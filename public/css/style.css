@@ -1383,7 +1383,7 @@ body::before {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: -16px;
+  gap: 2px;
   position: relative;
 }
 
@@ -1648,10 +1648,11 @@ body::before {
 
 /* Small Cards for Table */
 .card-small {
-  width: 56px;
-  height: 80px;
-  padding: 4px 5px;
+  width: 52px;
+  height: 74px;
+  padding: 3px 4px;
   border-radius: 6px;
+  overflow: hidden;
 }
 
 .card-small::before {
@@ -1664,15 +1665,15 @@ body::before {
 }
 
 .card-small .card-rank {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .card-small .card-suit-small {
-  font-size: 10px;
+  font-size: 9px;
 }
 
 .card-small .card-center {
-  font-size: 22px;
+  font-size: 20px;
 }
 
 .card-small .card-center {

@@ -503,7 +503,7 @@
       if(p.defense) {
         const defCard = createCardEl(p.defense.card,false,true);
         defCard.style.position = 'relative';
-        defCard.style.marginTop = '-20px';
+        defCard.style.marginTop = '-10px';
         pd.appendChild(defCard);
       }
       c.appendChild(pd);
