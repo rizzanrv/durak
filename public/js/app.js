@@ -128,6 +128,15 @@
     socket.on('online_users', u => updateOnlineStatus(u));
     socket.on('training_hint', h => showTrainingHint(h));
     socket.on('ai_thinking', d => showAIThinking(d));
+    socket.on('kicked_from_room', () => {
+      currentRoom = null;
+      gameState = null;
+      localStorage.removeItem('currentRoom');
+      localStorage.removeItem('gameState');
+      $('#lobby-view').style.display = 'none';
+      showScreen('main-screen');
+      showToast(t('kicked_from_room') || 'Вы удалены из комнаты', 'error');
+    });
   }
 
   function showTrainingHint(hint) {
@@ -330,8 +339,17 @@
     
     room.players.forEach(p => {
       const d = document.createElement('div'); d.className = `lobby-player ${p.isReady ? 'ready' : ''}`;
-      d.innerHTML = `<div class="friend-avatar" style="background:${String(p.id).startsWith('ai_')?'#E17055':'#6C5CE7'};width:36px;height:36px;font-size:13px;">${p.username[0].toUpperCase()}</div><span class="lobby-player-name">${p.username}${p.id===currentUser.id?' (You)':''}</span>${p.isReady?`<span class="lobby-player-status">${t('ready_bang')}</span>`:`<span style="color:var(--text-muted);font-size:11px;">${t('not_ready')}</span>`}`;
+      const isCreator = room.creatorId === currentUser.id;
+      const isMe = p.id === currentUser.id;
+      const isAI = String(p.id).startsWith('ai_');
+      const kickBtn = (isCreator && !isMe && !isAI) 
+        ? `<button class="btn-kick" data-id="${p.id}" style="padding:4px 10px;border-radius:8px;border:1px solid var(--red);background:var(--red-dim);color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">✕</button>` 
+        : '';
+      d.innerHTML = `<div class="friend-avatar" style="background:${isAI?'#E17055':'#6C5CE7'};width:36px;height:36px;font-size:13px;">${p.username[0].toUpperCase()}</div><span class="lobby-player-name">${p.username}${isMe?' (You)':''}</span>${p.isReady?`<span class="lobby-player-status">${t('ready_bang')}</span>`:`<span style="color:var(--text-muted);font-size:11px;">${t('not_ready')}</span>`}${kickBtn}`;
       c.appendChild(d);
+    });
+    c.querySelectorAll('.btn-kick').forEach(b => b.onclick = () => {
+      socket.emit('kick_player', { playerId: b.dataset.id });
     });
     if (room.players.length < room.maxPlayers) { const e = document.createElement('div'); e.className = 'lobby-player'; e.innerHTML = `<span style="color:var(--text-muted);font-size:13px;">${t('waiting')}</span>`; c.appendChild(e); }
     $('#btn-start').style.display = (room.players.some(p => p.id === currentUser.id) && room.players.length >= 2) ? 'block' : 'none';

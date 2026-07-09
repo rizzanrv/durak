@@ -284,6 +284,32 @@ io.on('connection', (socket) => {
     triggerAI(room, getRoomId(socket));
   });
 
+  socket.on('kick_player', ({ playerId }) => {
+    if (!currentUser) return;
+    const room = getRoom(socket);
+    if (!room) return;
+    if (room.creatorId !== currentUser.id) return;
+    if (playerId === currentUser.id) return;
+    if (room.state !== 'waiting') return;
+
+    const playerIdx = room.players.findIndex(p => p.id === playerId);
+    if (playerIdx === -1) return;
+
+    const kickedPlayer = room.players[playerIdx];
+    room.players.splice(playerIdx, 1);
+
+    const kickedSocket = onlineUsers.get(playerId);
+    if (kickedSocket) {
+      io.to(kickedSocket.socketId).emit('kicked_from_room');
+      const kickSock = io.sockets.sockets.get(kickedSocket.socketId);
+      if (kickSock) kickSock.leave(getRoomId(socket));
+    }
+
+    userRooms.delete(playerId);
+    io.to(getRoomId(socket)).emit('room_updated', room.getPublicState());
+    io.emit('rooms_updated', getPublicRooms());
+  });
+
   socket.on('leave_room', () => {
     if (!socket.userId) return;
     const roomId = userRooms.get(socket.userId);
