@@ -232,7 +232,10 @@
         <div id="tab-profile" class="tab-panel">
           <div class="profile-card">
             <div class="profile-avatar" id="profile-avatar" style="cursor:pointer;" onclick="document.getElementById('avatar-picker').style.display=document.getElementById('avatar-picker').style.display==='none'?'flex':'none'"></div>
-            <div id="avatar-picker" style="display:none;flex-wrap:wrap;gap:8px;justify-content:center;margin:12px 0;padding:12px;background:var(--bg-secondary);border-radius:var(--radius-sm);"></div>
+            <input type="file" id="avatar-upload" accept="image/*" style="display:none;">
+            <div id="avatar-picker" style="display:none;flex-wrap:wrap;gap:8px;justify-content:center;margin:12px 0;padding:12px;background:var(--bg-secondary);border-radius:var(--radius-sm);">
+              <button id="btn-upload-photo" style="width:36px;height:36px;font-size:16px;border:2px dashed var(--accent);border-radius:8px;background:var(--accent-dim);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--accent);">📷</button>
+            </div>
             <h2 id="profile-username"></h2>
             <input type="text" id="profile-bio" placeholder="О себе..." style="width:100%;padding:10px 14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:14px;font-family:inherit;margin:12px 0;text-align:center;outline:none;">
             <button class="btn btn-primary" id="btn-save-profile" style="margin-bottom:16px;" data-i18n="save">Save</button>

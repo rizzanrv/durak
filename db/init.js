@@ -41,6 +41,7 @@ async function initDb() {
 
   try { db.run(`ALTER TABLE users ADD COLUMN avatar_emoji TEXT DEFAULT '😎'`); } catch(e) {}
   try { db.run(`ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''`); } catch(e) {}
+  try { db.run(`ALTER TABLE users ADD COLUMN avatar_photo TEXT DEFAULT NULL`); } catch(e) {}
 
   db.run(`
     CREATE TABLE IF NOT EXISTS sessions (

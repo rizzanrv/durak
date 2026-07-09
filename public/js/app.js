@@ -68,17 +68,30 @@
     if (!currentUser) return;
     const c = currentUser.avatarColor || '#6C5CE7';
     const emoji = currentUser.avatarEmoji || '😎';
-    $('#header-avatar').textContent = emoji; $('#header-avatar').style.background = c;
+    const photo = currentUser.avatarPhoto;
+
+    const setAvatar = (el, size) => {
+      if (photo) {
+        el.style.background = `url(${photo}) center/cover`;
+        el.textContent = '';
+      } else {
+        el.style.background = c;
+        el.textContent = emoji;
+      }
+    };
+
+    setAvatar($('#header-avatar'));
+    setAvatar($('#profile-avatar'));
+
     $('#header-username').textContent = currentUser.username;
     $('#header-rating').textContent = `${currentUser.rating} ${t('rating')}`;
-    $('#profile-avatar').textContent = emoji; $('#profile-avatar').style.background = c;
     $('#profile-username').textContent = currentUser.username;
     $('#profile-bio').value = currentUser.bio || '';
     $('#stat-rating').textContent = currentUser.rating;
     $('#stat-games').textContent = currentUser.gamesPlayed;
     $('#stat-wins').textContent = currentUser.gamesWon;
 
-    const emojis = ['😎','🃏','♠️','♥️','♦️','♣️','🏆','👑','🎯','🔥','💀','🤖','🐱','🐶','🦊','🐼','🦁','🐸','🎮','🎲','🃏','👑','💎','🌟'];
+    const emojis = ['😎','🃏','♠️','♥️','♦️','♣️','🏆','👑','🎯','🔥','💀','🤖','🐱','🐶','🦊','🐼','🦁','🐸','🎮','🎲'];
     const picker = $('#avatar-picker');
     if (picker && !picker.dataset.init) {
       picker.dataset.init = '1';
@@ -86,9 +99,47 @@
         const btn = document.createElement('button');
         btn.textContent = e;
         btn.style.cssText = 'width:36px;height:36px;font-size:20px;border:2px solid var(--border);border-radius:8px;background:var(--bg-tertiary);cursor:pointer;display:flex;align-items:center;justify-content:center;';
-        btn.onclick = () => { currentUser.avatarEmoji = e; $('#profile-avatar').textContent = e; picker.style.display = 'none'; };
+        btn.onclick = () => {
+          currentUser.avatarEmoji = e;
+          currentUser.avatarPhoto = null;
+          $('#profile-avatar').style.background = c;
+          $('#profile-avatar').textContent = e;
+          picker.style.display = 'none';
+        };
         picker.appendChild(btn);
       });
+    }
+
+    const uploadBtn = $('#btn-upload-photo');
+    const fileInput = $('#avatar-upload');
+    if (uploadBtn && fileInput && !uploadBtn.dataset.init) {
+      uploadBtn.dataset.init = '1';
+      uploadBtn.onclick = () => fileInput.click();
+      fileInput.onchange = async () => {
+        const file = fileInput.files[0];
+        if (!file) return;
+        if (file.size > 2 * 1024 * 1024) { showToast('Max 2MB', 'error'); return; }
+        const fd = new FormData();
+        fd.append('avatar', file);
+        try {
+          const res = await fetch('/api/auth/avatar', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            body: fd
+          });
+          const d = await res.json();
+          if (d.user) {
+            currentUser = d.user;
+            const av = $('#profile-avatar');
+            av.style.background = `url(${d.user.avatarPhoto}) center/cover`;
+            av.textContent = '';
+            $('#header-avatar').style.background = `url(${d.user.avatarPhoto}) center/cover`;
+            $('#header-avatar').textContent = '';
+            picker.style.display = 'none';
+            showToast(t('save'), 'success');
+          }
+        } catch(e) { showToast('Upload error', 'error'); }
+      };
     }
 
     $('#btn-save-profile').onclick = async () => {
@@ -535,7 +586,11 @@
       const roleColor = state.attacker === i ? 'var(--accent)' : state.defender === i ? 'var(--red)' : 'var(--text-muted)';
       const emoji = p.avatarEmoji || '😎';
       const color = String(p.id).startsWith('ai_') ? '#E17055' : (p.avatarColor || '#6C5CE7');
-      d.innerHTML = `<div class="friend-avatar" style="background:${color};width:36px;height:36px;margin:0 auto 2px;font-size:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;" data-user-id="${p.id}">${emoji}</div><div class="opponent-name">${p.username}</div><div style="font-size:9px;font-weight:700;color:${roleColor};margin-bottom:2px;">${role}</div><div class="opponent-cards"><span class="card-count-icon">${SUIT_SYMBOLS[state.trump] || '?'}</span> <span class="card-count-num">${p.handCount}</span></div>`;
+      const photo = p.avatarPhoto;
+      const avatarStyle = photo
+        ? `background:url(${photo}) center/cover;`
+        : `background:${color};`;
+      d.innerHTML = `<div class="friend-avatar" style="${avatarStyle}width:36px;height:36px;margin:0 auto 2px;font-size:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;" data-user-id="${p.id}">${photo ? '' : emoji}</div><div class="opponent-name">${p.username}</div><div style="font-size:9px;font-weight:700;color:${roleColor};margin-bottom:2px;">${role}</div><div class="opponent-cards"><span class="card-count-icon">${SUIT_SYMBOLS[state.trump] || '?'}</span> <span class="card-count-num">${p.handCount}</span></div>`;
       c.appendChild(d);
       const avatarEl = d.querySelector('.friend-avatar');
       if (avatarEl && !String(p.id).startsWith('ai_')) {
@@ -933,9 +988,12 @@
       m.className = 'modal';
       m.style.zIndex = '10001';
       const winRate = u.gamesPlayed > 0 ? Math.round(u.gamesWon / u.gamesPlayed * 100) : 0;
+      const avatarHTML = u.avatarPhoto
+        ? `<div style="width:72px;height:72px;border-radius:50%;background:url(${u.avatarPhoto}) center/cover;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;box-shadow:0 4px 16px rgba(0,0,0,0.3);border:3px solid ${u.avatarColor || '#6C5CE7'};"></div>`
+        : `<div style="width:72px;height:72px;border-radius:50%;background:${u.avatarColor};display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 12px;box-shadow:0 4px 16px rgba(0,0,0,0.3);">${u.avatarEmoji}</div>`;
       m.innerHTML = `<div class="modal-content" style="max-width:320px;">
         <div style="text-align:center;margin-bottom:20px;">
-          <div style="width:72px;height:72px;border-radius:50%;background:${u.avatarColor};display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 12px;box-shadow:0 4px 16px rgba(0,0,0,0.3);">${u.avatarEmoji}</div>
+          ${avatarHTML}
           <h2 style="font-size:20px;font-weight:800;margin-bottom:4px;">${u.username}</h2>
           <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">${u.bio || ''}</p>
         </div>
@@ -944,7 +1002,7 @@
           <div style="text-align:center;"><div style="font-size:22px;font-weight:800;color:var(--accent);">${u.gamesPlayed}</div><div style="font-size:11px;color:var(--text-muted);">${t('games')}</div></div>
           <div style="text-align:center;"><div style="font-size:22px;font-weight:800;color:var(--green);">${winRate}%</div><div style="font-size:11px;color:var(--text-muted);">Winrate</div></div>
         </div>
-        <button class="btn btn-secondary" onclick="this.closest('.modal').remove()" style="width:100%;">${t('resume')}</button>
+        <button class="btn btn-secondary" onclick="this.closest('.modal').remove()" style="width:100%;">OK</button>
       </div>`;
       m.onclick = e => { if(e.target === m) m.remove(); };
       document.body.appendChild(m);

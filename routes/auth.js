@@ -161,6 +161,7 @@ router.get('/me', authMiddleware, (req, res) => {
       email: req.user.email,
       avatarColor: req.user.avatar_color,
       avatarEmoji: req.user.avatar_emoji || '😎',
+      avatarPhoto: req.user.avatar_photo || null,
       bio: req.user.bio || '',
       rating: req.user.rating,
       gamesPlayed: req.user.games_played,
@@ -178,21 +179,22 @@ router.put('/profile', authMiddleware, (req, res) => {
   res.json({
     user: {
       id: user.id, username: user.username, avatarColor: user.avatar_color,
-      avatarEmoji: user.avatar_emoji || '😎', bio: user.bio || '',
-      rating: user.rating, gamesPlayed: user.games_played, gamesWon: user.games_won
+      avatarEmoji: user.avatar_emoji || '😎', avatarPhoto: user.avatar_photo || null,
+      bio: user.bio || '', rating: user.rating,
+      gamesPlayed: user.games_played, gamesWon: user.games_won
     }
   });
 });
 
 router.get('/profile/:userId', (req, res) => {
-  const user = queryOne('SELECT id, username, avatar_color, avatar_emoji, bio, rating, games_played, games_won, created_at FROM users WHERE id = ?', [req.params.userId]);
+  const user = queryOne('SELECT id, username, avatar_color, avatar_emoji, avatar_photo, bio, rating, games_played, games_won, created_at FROM users WHERE id = ?', [req.params.userId]);
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json({
     user: {
       id: user.id, username: user.username, avatarColor: user.avatar_color,
-      avatarEmoji: user.avatar_emoji || '😎', bio: user.bio || '',
-      rating: user.rating, gamesPlayed: user.games_played, gamesWon: user.games_won,
-      createdAt: user.created_at
+      avatarEmoji: user.avatar_emoji || '😎', avatarPhoto: user.avatar_photo || null,
+      bio: user.bio || '', rating: user.rating, gamesPlayed: user.games_played,
+      gamesWon: user.games_won, createdAt: user.created_at
     }
   });
 });

@@ -7,6 +7,8 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
+const fs = require('fs');
 
 const { initDb, queryAll, queryOne, run } = require('./db/init');
 const { router: authRouter, authMiddleware } = require('./routes/auth');
@@ -29,6 +31,26 @@ app.use(cors());
 app.use(express.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+
+const uploadsDir = path.join(__dirname, 'public', 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+app.use('/uploads', express.static(uploadsDir));
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadsDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname) || '.jpg';
+    cb(null, `avatar_${req.user?.id || Date.now()}${ext}`);
+  }
+});
+const upload = multer({
+  storage, limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only images'));
+  }
+});
+
 app.use('/api/auth', authRouter);
 app.use('/api/friends', friendsRouter);
 
@@ -38,6 +60,32 @@ app.get('/api/rooms', (req, res) => {
     if (room.state === 'waiting') list.push(room.getPublicState());
   }
   res.json({ rooms: list });
+});
+
+app.post('/api/auth/avatar', (req, res, next) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Auth required' });
+  try {
+    jwt.verify(token, JWT_SECRET);
+    const session = queryOne('SELECT * FROM sessions WHERE token = ?', [token]);
+    if (!session) return res.status(401).json({ error: 'Session expired' });
+    req.user = queryOne('SELECT * FROM users WHERE id = ?', [session.user_id]);
+    if (!req.user) return res.status(401).json({ error: 'User not found' });
+    next();
+  } catch(e) { return res.status(401).json({ error: 'Invalid token' }); }
+}, upload.single('avatar'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file' });
+  const url = `/uploads/${req.file.filename}`;
+  run('UPDATE users SET avatar_photo = ? WHERE id = ?', [url, req.user.id]);
+  const user = queryOne('SELECT * FROM users WHERE id = ?', [req.user.id]);
+  res.json({
+    user: {
+      id: user.id, username: user.username, avatarColor: user.avatar_color,
+      avatarEmoji: user.avatar_emoji || '😎', avatarPhoto: user.avatar_photo || null,
+      bio: user.bio || '', rating: user.rating,
+      gamesPlayed: user.games_played, gamesWon: user.games_won
+    }
+  });
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
