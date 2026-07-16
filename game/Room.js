@@ -15,14 +15,13 @@ class GameRoom {
     this.createdAt = Date.now();
     this.startedAt = null;
     
-    // Настройки игры
     this.settings = {
-      gameType: settings.gameType || 'podkidnoy', // podkidnoy, perevodnoy
-      deckSize: settings.deckSize || 36, // 24, 36, 72
-      maxPlayers: settings.maxPlayers || 2, // 2-6
-      turnTime: settings.turnTime || 60, // секунды, 0 = без ограничения
-      aiDifficulty: settings.aiDifficulty || 'medium', // easy, medium, hard
-      isTraining: settings.isTraining || false // режим обучения
+      gameType: settings.gameType || 'podkidnoy',
+      deckSize: settings.deckSize || 36,
+      maxPlayers: settings.maxPlayers || 2,
+      turnTime: settings.turnTime || 60,
+      aiDifficulty: settings.aiDifficulty || 'medium',
+      isTraining: settings.isTraining || false
     };
     
     this.maxPlayers = this.settings.maxPlayers;
@@ -31,6 +30,10 @@ class GameRoom {
     this.faceUpTrump = null;
     this.throwInProgress = false;
     this.throwInBy = null;
+    this.throwInAfterTakePhase = false;
+    this.throwInAfterTakeBy = null;
+    this.firstRound = true;
+    this.roundNumber = 0;
   }
 
   getMaxPlayers(mode) {
@@ -88,6 +91,7 @@ class GameRoom {
     this.state = 'playing';
     this.startedAt = Date.now();
     this.currentTurnStart = Date.now();
+    this.roundNumber = 0;
 
     for (const p of this.players) {
       p.hand = this.deck.splice(0, 6);
@@ -104,6 +108,7 @@ class GameRoom {
     }
     this.attacker = lowestIdx;
     this.defender = this.getNextPlayer(lowestIdx);
+    this.firstRound = true;
     return this.getState();
   }
 
@@ -119,7 +124,6 @@ class GameRoom {
 
   canAddToAttack(card) {
     if (this.table.length === 0) return true;
-    // Проверяем все карты на столе (и атакующие и защищающиеся)
     const tableRanks = new Set(this.table.map(t => t.card.rank));
     return tableRanks.has(card.rank);
   }
@@ -133,8 +137,14 @@ class GameRoom {
     return true;
   }
 
+  getMaxAttacksForDefender() {
+    if (this.firstRound && this.players.length >= 4) return 5;
+    return 6;
+  }
+
   attack(userId, card) {
     if (this.state !== 'playing') return { error: 'Game not started' };
+    if (this.throwInAfterTake) return { error: 'Throw-in after take in progress' };
     if (!this.players[this.attacker] || this.players[this.attacker].hand.length === 0) {
       this.attacker = this.getNextPlayer(this.attacker);
       this.defender = this.getNextPlayer(this.attacker);
@@ -151,8 +161,9 @@ class GameRoom {
       return { error: 'Card can\'t be added to attack' };
     }
 
-    if (this.table.filter(t => t.type === 'attack').length >= 6) {
-      return { error: 'Max 6 attacks per round' };
+    const attackCount = this.table.filter(t => t.type === 'attack').length;
+    if (attackCount >= this.getMaxAttacksForDefender()) {
+      return { error: `Max ${this.getMaxAttacksForDefender()} attacks per round` };
     }
 
     this.removeCardFromHand(userId, card);
@@ -180,6 +191,7 @@ class GameRoom {
 
   defend(userId, attackCard, defenseCard) {
     if (this.state !== 'playing') return { error: 'Game not started' };
+    if (this.throwInAfterTake) return { error: 'Throw-in after take in progress' };
     if (!this.players[this.defender] || this.players[this.defender].hand.length === 0) {
       return { error: 'Defender has no cards' };
     }
@@ -224,16 +236,22 @@ class GameRoom {
     this.attacker = this.getNextPlayer(this.defender);
     this.defender = this.getNextPlayer(this.attacker);
 
-    const drawResult = this.drawCards();
-    if (drawResult.gameOver) return drawResult;
-
     if (this.players[this.attacker]?.hand.length === 0) {
       this.attacker = this.getNextPlayer(this.attacker);
       this.defender = this.getNextPlayer(this.attacker);
     }
 
-    this.throwInProgress = this.players.length > 2;
-    this.throwInBy = this.throwInProgress ? this.attacker : null;
+    if (this.players.length > 2) {
+      this.throwInAfterTakePhase = true;
+      this.throwInAfterTakeBy = this.attacker;
+      this.throwInProgress = false;
+      this.throwInBy = null;
+    } else {
+      this.throwInAfterTakePhase = false;
+      const drawResult = this.drawCards();
+      if (drawResult.gameOver) return drawResult;
+    }
+
     return this.getState();
   }
 
@@ -252,6 +270,11 @@ class GameRoom {
       : []);
     if (tableRanks.size > 0 && !tableRanks.has(card.rank)) {
       return { error: 'Card rank not on table' };
+    }
+
+    const attackCount = this.table.filter(t => t.type === 'attack').length;
+    if (attackCount >= this.getMaxAttacksForDefender()) {
+      return { error: `Max ${this.getMaxAttacksForDefender()} attacks per round` };
     }
 
     this.removeCardFromHand(userId, card);
@@ -276,6 +299,49 @@ class GameRoom {
     return this.getState();
   }
 
+  throwInAfterTake(userId, card) {
+    if (!this.throwInAfterTakePhase) return { error: 'Not in post-take throw-in phase' };
+    if (userId === this.players[this.defender]?.id) return { error: 'Defender cannot throw in' };
+
+    const player = this.players.find(p => p.id === userId);
+    if (!player) return { error: 'Player not found' };
+    if (!player.hand.some(c => c.suit === card.suit && c.rank === card.rank)) {
+      return { error: 'You don\'t have this card' };
+    }
+
+    const tableRanks = new Set(this.table.length > 0 
+      ? this.table.map(t => t.card.rank) 
+      : []);
+    if (tableRanks.size > 0 && !tableRanks.has(card.rank)) {
+      return { error: 'Card rank not on table' };
+    }
+
+    this.removeCardFromHand(userId, card);
+    this.table.push({ card, type: 'attack', by: userId });
+
+    this.throwInAfterTakeBy = this.getNextNonDefender(this.throwInAfterTakeBy);
+    if (!this.throwInAfterTakeBy || this.throwInAfterTakeBy === this.attacker) {
+      this.throwInAfterTakePhase = false;
+      this.throwInAfterTakeBy = null;
+      const drawResult = this.drawCards();
+      if (drawResult.gameOver) return drawResult;
+    }
+
+    return this.getState();
+  }
+
+  passThrowInAfterTake(userId) {
+    if (!this.throwInAfterTakePhase) return { error: 'Not in post-take throw-in phase' };
+    this.throwInAfterTakeBy = this.getNextNonDefender(this.throwInAfterTakeBy);
+    if (!this.throwInAfterTakeBy || this.throwInAfterTakeBy === this.attacker) {
+      this.throwInAfterTakePhase = false;
+      this.throwInAfterTakeBy = null;
+      const drawResult = this.drawCards();
+      if (drawResult.gameOver) return drawResult;
+    }
+    return this.getState();
+  }
+
   getNextNonDefender(idx) {
     if (idx === undefined || idx === null) return null;
     let next = (idx + 1) % this.players.length;
@@ -296,6 +362,8 @@ class GameRoom {
     this.table = [];
     this.attacker = this.defender;
     this.defender = this.getNextPlayer(this.attacker);
+    this.firstRound = false;
+    this.roundNumber++;
 
     const drawResult = this.drawCards();
     if (drawResult.gameOver) return drawResult;
@@ -332,36 +400,30 @@ class GameRoom {
   }
 
   drawCards() {
-    // Сначала добираем атакующему, потом остальным по часовой, потом защищающемуся
     const drawOrder = [];
     
-    // Атакующий первый
     if (this.players[this.attacker]) {
       drawOrder.push(this.attacker);
     }
     
-    // Остальные игроки (кроме защищающегося)
     for (let i = 0; i < this.players.length; i++) {
       if (i !== this.attacker && i !== this.defender) {
         drawOrder.push(i);
       }
     }
     
-    // Защищающийся последний
     if (this.players[this.defender]) {
       drawOrder.push(this.defender);
     }
 
-    // Добираем карты в правильном порядке
     for (const idx of drawOrder) {
       const p = this.players[idx];
-      if (!p || p.hand.length === 0 && this.deck.length === 0) continue;
+      if (!p || (p.hand.length === 0 && this.deck.length === 0)) continue;
       while (p.hand.length < 6 && this.deck.length > 0) {
         p.hand.push(this.deck.shift());
       }
     }
 
-    // Проверка окончания игры
     const playersWithCards = this.players.filter(p => p.hand.length > 0);
     if (playersWithCards.length <= 1 && this.deck.length === 0) {
       this.state = 'finished';
@@ -414,7 +476,9 @@ class GameRoom {
       turnTimeRemaining: this.getTurnTimeRemaining(),
       faceUpTrump: this.faceUpTrump,
       throwInProgress: this.throwInProgress,
-      throwInBy: this.throwInBy
+      throwInBy: this.throwInBy,
+      throwInAfterTake: this.throwInAfterTakePhase || false,
+      throwInAfterTakeBy: this.throwInAfterTakeBy
     };
   }
 
@@ -468,23 +532,46 @@ class GameRoom {
     return this.getState();
   }
 
-  canTransfer(playerId, card) {
+  canTransfer(playerId, cards) {
     if (this.settings.gameType !== 'perevodnoy') return false;
     if (playerId !== this.players[this.defender]?.id) return false;
-    if (this.table.length !== 1) return false; // Только первая карта
+    if (this.table.length !== 1) return false;
+    
     const attackCard = this.table[0].card;
-    return card.rank === attackCard.rank;
-  }
-
-  transfer(playerId, card) {
-    if (!this.canTransfer(playerId, card)) {
-      return { error: 'Cannot transfer this card' };
+    if (!Array.isArray(cards)) cards = [cards];
+    
+    if (cards.length === 0) return false;
+    
+    for (const card of cards) {
+      if (card.rank !== attackCard.rank) return false;
+      const player = this.players.find(p => p.id === playerId);
+      if (!player.hand.some(c => c.suit === card.suit && c.rank === card.rank)) return false;
     }
 
-    this.removeCardFromHand(playerId, card);
-    this.table.push({ card, type: 'transfer', by: playerId });
+    const nextDefenderIdx = this.getNextPlayer(this.defender);
+    const nextDefender = this.players[nextDefenderIdx];
+    const totalCards = this.table.length + cards.length;
+    
+    if (nextDefender.hand.length < totalCards && nextDefender.hand.length > 0) {
+      return false;
+    }
 
-    const oldDefender = this.defender;
+    return true;
+  }
+
+  transfer(playerId, cards) {
+    if (!Array.isArray(cards)) cards = [cards];
+    if (cards.length === 0) return { error: 'No cards to transfer' };
+    
+    if (!this.canTransfer(playerId, cards)) {
+      return { error: 'Cannot transfer these cards' };
+    }
+
+    for (const card of cards) {
+      this.removeCardFromHand(playerId, card);
+      this.table.push({ card, type: 'transfer', by: playerId });
+    }
+
     this.defender = this.getNextPlayer(this.defender);
     
     if (this.defender === this.attacker) {

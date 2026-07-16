@@ -302,6 +302,26 @@ io.on('connection', (socket) => {
     triggerAI(room, getRoomId(socket));
   });
 
+  socket.on('throw_in_after_take', ({ card }) => {
+    if (!currentUser) return;
+    const room = getRoom(socket);
+    if (!room) return;
+    const result = room.throwInAfterTake(currentUser.id, card);
+    if (result.error) return socket.emit('error', { message: result.error });
+    emitState(room, getRoomId(socket));
+    triggerAI(room, getRoomId(socket));
+  });
+
+  socket.on('pass_throw_in_after_take', () => {
+    if (!currentUser) return;
+    const room = getRoom(socket);
+    if (!room) return;
+    const result = room.passThrowInAfterTake(currentUser.id);
+    if (result.error) return socket.emit('error', { message: result.error });
+    emitState(room, getRoomId(socket));
+    triggerAI(room, getRoomId(socket));
+  });
+
   socket.on('end_round', () => {
     if (!currentUser) return;
     const room = getRoom(socket);

@@ -783,14 +783,36 @@
 
     a.innerHTML = '';
     
-    if (isDefender && state.isDefenderTurn) {
-      // Кнопка "Взять"
+    if (state.throwInAfterTake && state.throwInAfterTakeBy === myIdx && !isDefender) {
+      const tableRanks = new Set(state.table.map(t => t.card.rank));
+      const canThrow = myHand.some(c => tableRanks.size === 0 || tableRanks.has(c.rank));
+      
+      if (canThrow) {
+        const throwBtn = document.createElement('button');
+        throwBtn.className = 'btn btn-secondary';
+        throwBtn.textContent = t('throw_in') || 'Подкинуть';
+        throwBtn.style.cssText = 'width:auto;padding:10px 20px;font-size:14px;';
+        throwBtn.onclick = () => {
+          const card = myHand.find(c => tableRanks.size === 0 || tableRanks.has(c.rank));
+          if (card) {
+            socket.emit('throw_in_after_take', { card });
+          }
+        };
+        a.appendChild(throwBtn);
+      }
+      
+      const passBtn = document.createElement('button');
+      passBtn.className = 'btn btn-secondary';
+      passBtn.textContent = t('pass');
+      passBtn.style.cssText = 'width:auto;padding:10px 28px;font-size:14px;';
+      passBtn.onclick = () => { socket.emit('pass_throw_in_after_take'); };
+      a.appendChild(passBtn);
+    } else if (isDefender && state.isDefenderTurn) {
       const takeBtn = document.createElement('button');
       takeBtn.className = 'btn-take'; takeBtn.textContent = t('take');
       takeBtn.onclick = () => { socket.emit('take_cards'); selectedCard = null; Sound.play('take_cards'); };
       a.appendChild(takeBtn);
       
-      // Кнопка "Перевести" для переводного дурака
       if (state.settings && state.settings.gameType === 'perevodnoy' && state.table.length === 1) {
         const transferBtn = document.createElement('button');
         transferBtn.className = 'btn btn-secondary'; 
@@ -815,8 +837,8 @@
     }
 
     if (state.throwInProgress && state.throwInBy !== undefined) {
-      const myIdx = state.players.findIndex(p => p.id === currentUser.id);
-      if (state.throwInBy === myIdx && myIdx !== state.defender) {
+      const myIdx2 = state.players.findIndex(p => p.id === currentUser.id);
+      if (state.throwInBy === myIdx2 && myIdx2 !== state.defender) {
         const passBtn = document.createElement('button');
         passBtn.className = 'btn btn-secondary';
         passBtn.textContent = t('pass');
