@@ -30,8 +30,6 @@ class GameRoom {
     this.faceUpTrump = null;
     this.throwInProgress = false;
     this.throwInBy = null;
-    this.throwInAfterTakePhase = false;
-    this.throwInAfterTakeBy = null;
     this.firstRound = true;
     this.roundNumber = 0;
   }
@@ -144,7 +142,6 @@ class GameRoom {
 
   attack(userId, card) {
     if (this.state !== 'playing') return { error: 'Game not started' };
-    if (this.throwInAfterTake) return { error: 'Throw-in after take in progress' };
     if (!this.players[this.attacker] || this.players[this.attacker].hand.length === 0) {
       this.attacker = this.getNextPlayer(this.attacker);
       this.defender = this.getNextPlayer(this.attacker);
@@ -191,7 +188,6 @@ class GameRoom {
 
   defend(userId, attackCard, defenseCard) {
     if (this.state !== 'playing') return { error: 'Game not started' };
-    if (this.throwInAfterTake) return { error: 'Throw-in after take in progress' };
     if (!this.players[this.defender] || this.players[this.defender].hand.length === 0) {
       return { error: 'Defender has no cards' };
     }
@@ -233,6 +229,7 @@ class GameRoom {
     player.hand.push(...takenCards);
     this.table = [];
 
+    const oldDefender = this.defender;
     this.attacker = this.getNextPlayer(this.defender);
     this.defender = this.getNextPlayer(this.attacker);
 
@@ -241,16 +238,13 @@ class GameRoom {
       this.defender = this.getNextPlayer(this.attacker);
     }
 
-    if (this.players.length > 2) {
-      this.throwInAfterTakePhase = true;
-      this.throwInAfterTakeBy = this.attacker;
-      this.throwInProgress = false;
-      this.throwInBy = null;
-    } else {
-      this.throwInAfterTakePhase = false;
-      const drawResult = this.drawCards();
-      if (drawResult.gameOver) return drawResult;
-    }
+    this.throwInAfterTakePhase = false;
+    this.throwInAfterTakeBy = null;
+    this.throwInProgress = false;
+    this.throwInBy = null;
+
+    const drawResult = this.drawCards();
+    if (drawResult.gameOver) return drawResult;
 
     return this.getState();
   }
@@ -476,9 +470,7 @@ class GameRoom {
       turnTimeRemaining: this.getTurnTimeRemaining(),
       faceUpTrump: this.faceUpTrump,
       throwInProgress: this.throwInProgress,
-      throwInBy: this.throwInBy,
-      throwInAfterTake: this.throwInAfterTakePhase || false,
-      throwInAfterTakeBy: this.throwInAfterTakeBy
+      throwInBy: this.throwInBy
     };
   }
 

@@ -1235,9 +1235,7 @@ body::before {
     radial-gradient(circle at 50% 50%, rgba(0, 100, 80, 0.08) 0%, transparent 60%),
     linear-gradient(135deg, #0f1419 0%, #1a1f2e 100%);
   background-attachment: fixed;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  overflow: visible;
 }
 
 .game-header {
