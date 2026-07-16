@@ -131,64 +131,6 @@
             </button>
           </div>
 
-          <div id="game-settings-modal" class="modal" style="display:none;">
-            <div class="modal-content" style="max-width:500px;">
-              <h2 data-i18n="game_settings">Game Settings</h2>
-              
-              <div class="setting-group">
-                <label data-i18n="game_type">Game Type</label>
-                <select id="setting-game-type">
-                  <option value="podkidnoy" data-i18n="podkidnoy">Podkidnoy</option>
-                  <option value="perevodnoy" data-i18n="perevodnoy">Perevodnoy</option>
-                </select>
-              </div>
-
-              <div class="setting-group">
-                <label data-i18n="deck_size">Deck Size</label>
-                <select id="setting-deck-size">
-                  <option value="24" data-i18n="cards_24">24 cards</option>
-                  <option value="36" selected data-i18n="cards_36">36 cards</option>
-                  <option value="52" data-i18n="cards_52">52 cards</option>
-                  <option value="72" data-i18n="cards_72">72 cards</option>
-                </select>
-              </div>
-
-              <div class="setting-group">
-                <label data-i18n="max_players">Max Players</label>
-                <select id="setting-max-players">
-                  <option value="2" selected>2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                  <option value="5">5</option>
-                  <option value="6">6</option>
-                </select>
-              </div>
-
-              <div class="setting-group">
-                <label data-i18n="turn_time">Turn Time</label>
-                <select id="setting-turn-time">
-                  <option value="0" data-i18n="unlimited">Unlimited</option>
-                  <option value="30">30 <span data-i18n="seconds">sec</span></option>
-                  <option value="60" selected>60 <span data-i18n="seconds">sec</span></option>
-                  <option value="90">90 <span data-i18n="seconds">sec</span></option>
-                  <option value="120">120 <span data-i18n="seconds">sec</span></option>
-                </select>
-              </div>
-
-              <div class="setting-group" id="ai-difficulty-group">
-                <label data-i18n="ai_difficulty">AI Difficulty</label>
-                <select id="setting-ai-difficulty">
-                  <option value="easy" data-i18n="difficulty_easy">Easy</option>
-                  <option value="medium" selected data-i18n="difficulty_medium">Medium</option>
-                  <option value="hard" data-i18n="difficulty_hard">Hard</option>
-                </select>
-              </div>
-
-              <div class="modal-actions">
-                <button class="btn btn-secondary" id="btn-cancel-settings">Cancel</button>
-                <button class="btn btn-primary" id="btn-confirm-settings" data-i18n="create_game">Create Game</button>
-              </div>
-            </div>
           </div>
 
           <div id="lobby-view" class="lobby-view" style="display:none;">
@@ -297,6 +239,60 @@
         <div class="player-avatar-small" id="game-player-avatar"></div>
         <span class="player-name-small" id="game-player-name"></span>
         <button class="btn-hint" id="btn-hint" style="display:none;" data-i18n="get_hint">Hint</button>
+      </div>
+    </div>
+
+    <div id="game-settings-modal" class="modal" style="display:none;">
+      <div class="modal-content" style="max-width:500px;">
+        <h2 data-i18n="game_settings">Game Settings</h2>
+        <div class="setting-group">
+          <label data-i18n="game_type">Game Type</label>
+          <select id="setting-game-type">
+            <option value="podkidnoy" data-i18n="podkidnoy">Podkidnoy</option>
+            <option value="perevodnoy" data-i18n="perevodnoy">Perevodnoy</option>
+          </select>
+        </div>
+        <div class="setting-group">
+          <label data-i18n="deck_size">Deck Size</label>
+          <select id="setting-deck-size">
+            <option value="24" data-i18n="cards_24">24 cards</option>
+            <option value="36" selected data-i18n="cards_36">36 cards</option>
+            <option value="52" data-i18n="cards_52">52 cards</option>
+            <option value="72" data-i18n="cards_72">72 cards</option>
+          </select>
+        </div>
+        <div class="setting-group">
+          <label data-i18n="max_players">Max Players</label>
+          <select id="setting-max-players">
+            <option value="2" selected>2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+          </select>
+        </div>
+        <div class="setting-group">
+          <label data-i18n="turn_time">Turn Time</label>
+          <select id="setting-turn-time">
+            <option value="0" data-i18n="unlimited">Unlimited</option>
+            <option value="30">30 <span data-i18n="seconds">sec</span></option>
+            <option value="60" selected>60 <span data-i18n="seconds">sec</span></option>
+            <option value="90">90 <span data-i18n="seconds">sec</span></option>
+            <option value="120">120 <span data-i18n="seconds">sec</span></option>
+          </select>
+        </div>
+        <div class="setting-group" id="ai-difficulty-group">
+          <label data-i18n="ai_difficulty">AI Difficulty</label>
+          <select id="setting-ai-difficulty">
+            <option value="easy" data-i18n="difficulty_easy">Easy</option>
+            <option value="medium" selected data-i18n="difficulty_medium">Medium</option>
+            <option value="hard" data-i18n="difficulty_hard">Hard</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" id="btn-cancel-settings">Cancel</button>
+          <button class="btn btn-primary" id="btn-confirm-settings" data-i18n="create_game">Create Game</button>
+        </div>
       </div>
     </div>
 
