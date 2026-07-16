@@ -489,9 +489,10 @@
     }, { passive: true });
     
     tableArea.addEventListener('touchend', (e) => {
+      if (e.target.closest('#table-actions') || e.target.closest('#training-hint')) {
+        return;
+      }
       const touchDuration = Date.now() - touchStartTime;
-      
-      // Quick tap on table area
       if (!touchMoved && touchDuration < 300) {
         e.preventDefault();
       }
@@ -735,9 +736,8 @@
         if (cloned) {
           cloned.style.left = (e.touches[0].clientX - 36) + 'px';
           cloned.style.top = (e.touches[0].clientY - 54) + 'px';
+          e.preventDefault();
         }
-        
-        e.preventDefault();
       };
       
       el.ontouchend = e => {
@@ -753,7 +753,7 @@
             playCard(card);
             navigator.vibrate?.(50);
           }
-        } else {
+        } else if (!hasMoved) {
           playCard(card);
         }
         

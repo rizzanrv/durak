@@ -1,12 +1,12 @@
-const CACHE_NAME = 'durak-v1';
+const CACHE_NAME = 'durak-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/css/style.css',
   '/js/app.js',
   '/manifest.json',
-  '/img/icon-192.png',
-  '/img/icon-512.png'
+  '/img/icon-192.svg',
+  '/img/icon-512.svg'
 ];
 
 self.addEventListener('install', (event) => {
