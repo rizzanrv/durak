@@ -433,7 +433,7 @@ body::before {
 .mode-card p { font-size: 11px; color: var(--text-secondary); }
 
 /* LOBBY */
-.lobby-view { position: fixed; inset: 0; background: var(--bg-primary); z-index: 20; display: flex; flex-direction: column; }
+.lobby-view { position: fixed; inset: 0; background: var(--bg-primary); z-index: 200; display: flex; flex-direction: column; }
 .lobby-header { display: flex; align-items: center; gap: 12px; padding: 14px; padding-top: calc(14px + var(--safe-top)); background: var(--bg-secondary); border-bottom: 1px solid var(--border); }
 .btn-back { width: 36px; height: 36px; border-radius: 50%; border: none; background: var(--bg-tertiary); color: var(--text-primary); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .lobby-players { flex: 1; padding: 14px; overflow-y: auto; }
