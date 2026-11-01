@@ -99,8 +99,23 @@ function authenticateSocket(token) {
   } catch { return null; }
 }
 
-function emitState(room, roomId) {
-  io.to(roomId).emit('game_state', room.getState());
+function stateFor(room, userId) {
+  return typeof room.getStateFor === 'function' ? room.getStateFor(userId) : room.getState();
+}
+
+/* Send the board to every player separately: a broadcast would leak all hands. */
+function emitState(room, roomId, eventName = 'game_state') {
+  const everyone = io.sockets.adapter.rooms.get(roomId);
+  if (!everyone || everyone.size === 0) {
+    io.to(roomId).emit(eventName, room.getState());
+    return;
+  }
+  for (const player of room.players) {
+    const online = onlineUsers.get(player.id);
+    if (online && online.socketId && everyone.has(online.socketId)) {
+      io.to(online.socketId).emit(eventName, stateFor(room, player.id));
+    }
+  }
 }
 
 function getRoom(socket) {
@@ -143,8 +158,8 @@ io.on('connection', (socket) => {
     }
     userRooms.set(currentUser.id, roomId);
     socket.join(roomId);
-    socket.emit('reconnect_success', room.getState());
-    socket.emit('game_state', room.getState());
+    socket.emit('reconnect_success', stateFor(room, currentUser.id));
+    socket.emit('game_state', stateFor(room, currentUser.id));
   });
 
   socket.on('create_room', ({ mode, settings }) => {
@@ -369,7 +384,7 @@ io.on('connection', (socket) => {
       if (room.players.length === 0) {
         rooms.delete(roomId);
       } else if (room.state === 'playing') {
-        io.to(roomId).emit('game_state', room.getState());
+        emitState(room, roomId);
         triggerAI(room, roomId);
       } else {
         io.to(roomId).emit('room_updated', room.getPublicState());
@@ -402,7 +417,7 @@ io.on('connection', (socket) => {
         if (room.players.length === 0) {
           rooms.delete(roomId);
         } else if (room.state === 'playing') {
-          io.to(roomId).emit('game_state', room.getState());
+          emitState(room, roomId);
           triggerAI(room, roomId);
         } else {
           io.to(roomId).emit('room_updated', room.getPublicState());
@@ -415,8 +430,8 @@ io.on('connection', (socket) => {
 });
 
 function startGame(room, roomId) {
-  const state = room.startGame();
-  io.to(roomId).emit('game_started', state);
+  room.startGame();
+  emitState(room, roomId, 'game_started');
   io.emit('rooms_updated', getPublicRooms());
   triggerAI(room, roomId);
   startTurnTimer(room, roomId);

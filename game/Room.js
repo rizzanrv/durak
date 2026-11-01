@@ -16,7 +16,9 @@ class GameRoom {
     this.startedAt = null;
     
     this.settings = {
-      gameType: settings.gameType || 'podkidnoy',
+      // 'transfer' rooms are the transferable ("переводной") durak; without an
+      // explicit gameType the mode decides, otherwise transfer silently breaks.
+      gameType: settings.gameType || ((mode === 'transfer' || mode === 'perevodnoy') ? 'perevodnoy' : 'podkidnoy'),
       deckSize: settings.deckSize || 36,
       maxPlayers: settings.maxPlayers || 2,
       turnTime: settings.turnTime || 60,
@@ -52,7 +54,14 @@ class GameRoom {
   removePlayer(userId) {
     const idx = this.players.findIndex(p => p.id === userId);
     if (idx === -1) return;
+
+    // Remember the turn by identity: array indices shift after splice().
+    const attackerId = this.players[this.attacker] ? this.players[this.attacker].id : null;
+    const defenderId = this.players[this.defender] ? this.players[this.defender].id : null;
+    const wasActive = idx === this.attacker || idx === this.defender;
+
     this.players.splice(idx, 1);
+
     if (this.players.length === 0) {
       this.state = 'finished';
       return;
@@ -62,14 +71,27 @@ class GameRoom {
       this.state = 'finished';
       return;
     }
-    if (idx === this.attacker || idx === this.defender) {
-      this.attacker = 0;
-      this.defender = this.getNextPlayer(0);
+
+    let nextAttacker = attackerId ? this.players.findIndex(p => p.id === attackerId) : -1;
+    let nextDefender = defenderId ? this.players.findIndex(p => p.id === defenderId) : -1;
+
+    if (wasActive) {
+      // The player holding the turn left: hand the move to the next seat.
       this.table = [];
+      if (nextAttacker === -1) nextAttacker = 0;
+      nextDefender = this.getNextPlayer(nextAttacker);
+      if (nextDefender === nextAttacker) {
+        nextDefender = (nextAttacker + 1) % this.players.length;
+      }
     } else {
-      if (this.attacker >= this.players.length) this.attacker = 0;
-      if (this.defender >= this.players.length) this.defender = this.getNextPlayer(this.attacker);
+      if (nextAttacker === -1) nextAttacker = 0;
+      if (nextDefender === -1 || nextDefender === nextAttacker) {
+        nextDefender = this.getNextPlayer(nextAttacker);
+      }
     }
+
+    this.attacker = nextAttacker;
+    this.defender = nextDefender;
   }
 
   setReady(userId) {
@@ -111,6 +133,7 @@ class GameRoom {
   }
 
   getNextPlayer(idx) {
+    if (this.players.length === 0) return 0;
     let next = (idx + 1) % this.players.length;
     let safety = 0;
     while (this.players[next] && this.players[next].hand.length === 0 && safety < this.players.length) {
@@ -163,6 +186,13 @@ class GameRoom {
       return { error: `Max ${this.getMaxAttacksForDefender()} attacks per round` };
     }
 
+    // You cannot put more cards on the table than the defender can beat.
+    const defenderHand = this.players[this.defender] ? this.players[this.defender].hand.length : 0;
+    const undefended = attackCount - this.table.filter(t => t.type === 'defense').length;
+    if (undefended >= defenderHand) {
+      return { error: 'Defender has no cards left to beat' };
+    }
+
     this.removeCardFromHand(userId, card);
     this.table.push({ card, type: 'attack', by: userId });
     this.resetTurnTimer();
@@ -192,6 +222,10 @@ class GameRoom {
       return { error: 'Defender has no cards' };
     }
     if (userId !== this.players[this.defender]?.id) return { error: 'Not your turn to defend' };
+
+    if (!this.hasUndefendedAttack(attackCard)) {
+      return { error: 'That attack is not on the table' };
+    }
 
     const player = this.players.find(p => p.id === userId);
     if (!player.hand.some(c => c.suit === defenseCard.suit && c.rank === defenseCard.rank)) {
@@ -223,13 +257,13 @@ class GameRoom {
   takeCards(userId) {
     if (this.state !== 'playing') return { error: 'Game not started' };
     if (userId !== this.players[this.defender]?.id) return { error: 'Not your turn' };
+    if (this.table.length === 0) return { error: 'Nothing to take' };
 
     const takenCards = this.table.map(t => t.card);
     const player = this.players.find(p => p.id === userId);
     player.hand.push(...takenCards);
     this.table = [];
 
-    const oldDefender = this.defender;
     this.attacker = this.getNextPlayer(this.defender);
     this.defender = this.getNextPlayer(this.attacker);
 
@@ -252,6 +286,10 @@ class GameRoom {
   throwIn(userId, card) {
     if (!this.throwInProgress) return { error: 'Not throw-in phase' };
     if (userId === this.players[this.defender]?.id) return { error: 'Defender cannot throw in' };
+    if (this.throwInBy !== null && this.throwInBy !== undefined &&
+        this.players[this.throwInBy] && this.players[this.throwInBy].id !== userId) {
+      return { error: 'Not your turn to throw in' };
+    }
 
     const player = this.players.find(p => p.id === userId);
     if (!player) return { error: 'Player not found' };
@@ -285,6 +323,10 @@ class GameRoom {
 
   passThrowIn(userId) {
     if (!this.throwInProgress) return { error: 'Not throw-in phase' };
+    if (this.throwInBy !== null && this.throwInBy !== undefined &&
+        this.players[this.throwInBy] && this.players[this.throwInBy].id !== userId) {
+      return { error: 'Not your turn to throw in' };
+    }
     this.throwInBy = this.getNextNonDefender(this.throwInBy);
     if (!this.throwInBy || this.throwInBy === this.attacker) {
       this.throwInProgress = false;
@@ -352,6 +394,10 @@ class GameRoom {
 
   endRound() {
     if (this.state !== 'playing') return { error: 'Game not started' };
+    if (this.table.filter(t => t.type === 'attack').length >
+        this.table.filter(t => t.type === 'defense').length) {
+      return { error: 'Not all attacks are defended' };
+    }
 
     this.table = [];
     this.attacker = this.defender;
@@ -437,6 +483,18 @@ class GameRoom {
     return { ok: true };
   }
 
+  /* An attack counts as undefended when it has not been beaten yet. Cards are
+     compared by suit+rank, so two identical cards from a 72-card deck both have
+     to be beaten separately. */
+  hasUndefendedAttack(card) {
+    if (!card) return false;
+    const attacks = this.table.filter(t => t.type === 'attack' &&
+      t.card.suit === card.suit && t.card.rank === card.rank).length;
+    const beaten = this.table.filter(t => t.type === 'defense' && t.beats &&
+      t.beats.suit === card.suit && t.beats.rank === card.rank).length;
+    return attacks - beaten > 0;
+  }
+
   isDefenderTurn() {
     return this.table.some(t => t.type === 'attack') &&
            this.table.filter(t => t.type === 'attack').length >
@@ -472,6 +530,20 @@ class GameRoom {
       throwInProgress: this.throwInProgress,
       throwInBy: this.throwInBy
     };
+  }
+
+  /* Per-player view: opponents' hands are hidden, only their size is exposed.
+     Everything else (table, trump, turn) stays public so every client can
+     render the same board. */
+  getStateFor(playerId) {
+    const state = this.getState();
+    state.you = playerId;
+    state.players = state.players.map(p => ({
+      ...p,
+      handCount: p.hand.length,
+      hand: p.id === playerId ? p.hand : []
+    }));
+    return state;
   }
 
   getPublicState() {
