@@ -117,12 +117,16 @@ class GameRoom {
       p.hand = this.deck.splice(0, 6);
     }
 
+    // The lowest trump card on the table decides who attacks first. Compare the
+    // minimum trump of each hand, not just the first trump we happen to find.
     let lowestIdx = 0;
     let lowestVal = Infinity;
     for (let i = 0; i < this.players.length; i++) {
-      const trumpCard = this.players[i].hand.find(c => c.suit === this.trump);
-      if (trumpCard && trumpCard.value < lowestVal) {
-        lowestVal = trumpCard.value;
+      const trumps = this.players[i].hand.filter(c => c.suit === this.trump);
+      if (trumps.length === 0) continue;
+      const minTrump = Math.min(...trumps.map(c => c.value));
+      if (minTrump < lowestVal) {
+        lowestVal = minTrump;
         lowestIdx = i;
       }
     }

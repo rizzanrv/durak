@@ -5,7 +5,7 @@ const { getDb, queryAll, queryOne, run } = require('../db/init');
 
 const router = express.Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'durak-secret-key-change-in-production';
+const JWT_SECRET = require('../lib/secret');
 const TOKEN_EXPIRY = '7d';
 
 function generateToken() {

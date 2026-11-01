@@ -20,7 +20,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' }, pingTimeout: 60000 });
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'durak-secret-key';
+const JWT_SECRET = require('./lib/secret');
 
 const rooms = new Map();
 const userRooms = new Map();
